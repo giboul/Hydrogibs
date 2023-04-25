@@ -215,6 +215,7 @@ class GR4diagram:
             ax1.set_xlabel("Time [h]")
             ax1.set_xlim((time.min(), time.max()))
             ax1.set_ylim((0, (1 + self.flows_margin)*Q.max()))
+            ax1.set_yscale("linear")
             yticks = ax1.get_yticks()
             yticks = [
                 y for y in yticks
@@ -251,6 +252,7 @@ class GR4diagram:
             ]
             ax3.set_yticks(yticks)
             ax3.set_yticklabels(ax3.get_yticks(), color=c3)
+            ax3.set_yscale("linear")
             ax3.grid(False)
 
             lines = (bars, patch, patch1, patch2, line)
@@ -309,23 +311,25 @@ class GR4diagram:
         _, dT = water_flow.get_data()
         dTm = dT.max()
 
+        ax1.set_yscale("linear")
         ylim = Qm * (1 + self.flows_margin)
         ax1.set_ylim((0, ylim if ylim else 1))
         ax1.set_xlim((0, t.max()))
-        yticks = np.linspace(0, Qm, 7)
+        yticks = [
+            ytick for ytick in ax1.get_yticks()
+            if ytick <= Qm
+        ]
         ax1.set_yticks(yticks)
-        ax1.set_yticklabels([f"{tick:.2}" for tick in yticks])
+        ax1.set_yticklabels(yticks)
 
+        ax2.set_yscale("linear")
         ylim = Imax * (1 + self.rain_margin)
         ax2.set_ylim((ylim if ylim else 1, 0))
         ax2.set_yticks((0, Imax))
-        ax2.set_yticklabels((0, f"{Imax:.1f}"))
 
+        ax3.set_yscale("linear")
         ylim = dTm * (1 + self.flows_margin)
         ax3.set_ylim((0, ylim if ylim else 1))
-        yticks = np.linspace(0, dTm, 7)
-        ax3.set_yticks(yticks)
-        ax3.set_yticklabels([f"{tick:.2}" for tick in yticks])
 
         plt.tight_layout()
         canvas.draw()
