@@ -5,7 +5,7 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg,\
 from matplotlib.backend_bases import key_press_handler
 import customtkinter as ctk
 from typing import Callable
-from collections import namedtuple
+from dataclasses import dataclass
 
 
 def _transfer_func(n: float, X4: float):  # m/km/s
@@ -132,17 +132,21 @@ class Catchment:
         return rain @ self
 
 
-Event = namedtuple("Event",
-                   ("time",
-                    "rainfall",
-                    "volume",
-                    "water_flow_rain",
-                    "water_flow_volume",
-                    "water_flow",
-                    "discharge_rain",
-                    "discharge_volume",
-                    "discharge")
-                   )
+@dataclass
+class Event:
+
+    time: np.ndarray
+    rainfall: np.ndarray
+    volume: np.ndarray
+    water_flow_rain: np.ndarray
+    water_flow_volume: np.ndarray
+    water_flow: np.ndarray
+    discharge_rain: np.ndarray
+    discharge_volume: np.ndarray
+    discharge: np.ndarray
+
+    def diagram(self):
+        return GR4diagram(self)
 
 
 class GR4diagram:
