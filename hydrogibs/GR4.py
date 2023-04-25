@@ -23,9 +23,17 @@ def _transfer_func(n: float, X4: float):  # m/km/s
 
 
 class Rain:
-
     """
-    Rain object to apply to a catchment
+    Rain object to apply to a Catchment object.
+
+    Args:
+        - time        (np.ndarray)       [h]
+        - rain_func   (callable)   -> [mm/h]
+
+    Creates a GR4h object when called with a Catchment object:
+    >>> gr4h = GR4h(catchment, rain)
+    Creates an Event object when applied to a catchment
+    >>> event = rain @ catchment
     """
 
     def __init__(self, time: np.ndarray, rain_func: Callable) -> None:
@@ -49,9 +57,10 @@ class BlockRain:
         - timestep         (float) [h]: directly linked to precision
         - observation_span (float) [h]: the duration of the experiment
 
-    Can create a GR4h object when calles with a Catchment object:
-    >>> gr4h = rain @ catchment
+    Creates a GR4h object when called with a Catchment object:
     >>> gr4h = GR4h(catchment, rain)
+    Creates an Event object when applied to a catchment
+    >>> event = rain @ catchment
     """
 
     def __init__(self,
@@ -85,11 +94,10 @@ class Catchment:
     """
     Stores GR4h catchment parameters.
 
-    Returns a GR4h object when called with a Rain object:
-        >>> catchment = Catchment(X1=8/100, X2=40, X3=0.1, X4=1)
-        >>> rain = BlockRain(intensity=50)
-        >>> gr4: GR4h = catchment @ rain  # first syntax
-        >>> gr4: GR4h = GR4h(catchment, rain)  # second syntax
+    Creates a GR4h object when called with a Rain object:
+    >>> gr4h = GR4h(catchment, rain)
+    Creates an Event object when applied to a Rain object
+    >>> event = rain @ catchment
 
     Args:
         X1 (float)  [-] : dQ = X1 * dPrecipitations
@@ -328,9 +336,8 @@ class GR4h:
     A GR4h object is obtained when called with a Rain and a Catchment objects:
         >>> catchment = Catchment(X1=8/100, X2=40, X3=0.1, X4=1)
         >>> rain = BlockRain(intensity=50)
-        >>> gr4: GR4h = catchment @ rain  # first syntax
-        >>> gr4: GR4h = GR4h(catchment, rain)  # second syntax
-        >>> gr4.App()  # opens an interactive diagram in a tkinter window
+        >>> gr4h: GR4h = GR4h(catchment, rain)  # second syntax
+        >>> gr4h.App()  # opens an interactive diagram in a tkinter window
 
     Args:
         catchment (Catchment): contains essential parameters
@@ -361,13 +368,13 @@ class GR4h:
 
         self.event = gr4_block_rain(self.catchment, self.rain)
 
-        return self
+        return self.event
 
     def apply_rain(self):
 
         self.event = gr4_diff(self.catchment, self.rain)
 
-        return self
+        return self.event
 
     def create_diagram(self, *args, **kwargs):
 
@@ -681,14 +688,15 @@ class GR4App:
         self.canvas.draw()
 
 
-def GR4_demo():
-    # time = np.linspace(0, 10, 1000)
-    # gr4 = Catchment(8/100, 40, 0.1, 1, initial_volume=30) @ Rain(
-    #     time,
-    #     rain_func=lambda t: 50 if t < 2 else 0
-    # )
-    gr4 = Catchment(8/100, 40, 0.1, 1) @ BlockRain(50, duration=1.8)
-    gr4 = gr4.apply()
+def GR4_demo(kind="block"):
+
+    if kind == "block":
+        gr4 = Catchment(8/100, 40, 0.1, 1) @ BlockRain(50, duration=1.8)
+    else:
+        gr4 = Catchment(8/100, 40, 0.1, 1, initial_volume=30) @ Rain(
+            time=np.linspace(0, 10, 1000),
+            rain_func=lambda t: 50 if t < 2 else 0
+        )
     gr4.App()
 
 
