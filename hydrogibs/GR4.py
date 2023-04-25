@@ -5,7 +5,6 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg,\
 from matplotlib.backend_bases import key_press_handler
 import customtkinter as ctk
 from typing import Callable
-from dataclasses import dataclass
 
 
 def _transfer_func(n: float, X4: float):  # m/km/s
@@ -132,18 +131,34 @@ class Catchment:
         return rain @ self
 
 
-@dataclass
 class Event:
+    """
+    Stores all relevant results of a GR4h calculation
 
-    time: np.ndarray
-    rainfall: np.ndarray
-    volume: np.ndarray
-    water_flow_rain: np.ndarray
-    water_flow_volume: np.ndarray
-    water_flow: np.ndarray
-    discharge_rain: np.ndarray
-    discharge_volume: np.ndarray
-    discharge: np.ndarray
+    basic class instead of dataclass, namedtuple or dataframe is used
+    for speed reasons (an event will be created at every diagram update)
+    """
+
+    def __init__(self,
+                 time: np.ndarray,
+                 rainfall: np.ndarray,
+                 volume: np.ndarray,
+                 water_flow_rain: np.ndarray,
+                 water_flow_volume: np.ndarray,
+                 water_flow: np.ndarray,
+                 discharge_rain: np.ndarray,
+                 discharge_volume: np.ndarray,
+                 discharge: np.ndarray) -> None:
+
+        self.time = time
+        self.rainfall = rainfall
+        self.volume = volume
+        self.water_flow_rain = water_flow_rain
+        self.water_flow_volume = water_flow_volume
+        self.water_flow = water_flow
+        self.discharge_rain = discharge_rain
+        self.discharge_volume = discharge_volume
+        self.discharge = discharge
 
     def diagram(self, *args, **kwargs):
         return GR4diagram(self, *args, **kwargs)
@@ -482,6 +497,8 @@ def gr4_block_rain(catchment, block_rain) -> dict:
     I0 = block_rain.intensity
     rainfall = block_rain.rainfall
 
+    dtype = np.float16
+
     # Initializing time
     tf = 10*t0 if tf is None else tf
     t = np.arange(start=0, stop=tf, step=dt)
@@ -490,15 +507,15 @@ def gr4_block_rain(catchment, block_rain) -> dict:
     t1 = X2/I0
 
     # Initialize volume
-    V = np.zeros_like(t, dtype=np.float32)
+    V = np.zeros_like(t, dtype=dtype)
     V += V0
 
-    dTp = np.zeros_like(t, dtype=np.float128)
-    dTv = np.zeros_like(t, dtype=np.float128)
+    dTp = np.zeros_like(t, dtype=dtype)
+    dTv = np.zeros_like(t, dtype=dtype)
 
     # Initial abstraction
     i = t < t1
-    A = np.zeros_like(t, dtype=np.float16)
+    A = np.zeros_like(t, dtype=dtype)
     A[i] = I0*t[i]
     A[t >= t1] = A[i][-1]
 
