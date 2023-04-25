@@ -145,8 +145,8 @@ class Event:
     discharge_volume: np.ndarray
     discharge: np.ndarray
 
-    def diagram(self):
-        return GR4diagram(self)
+    def diagram(self, *args, **kwargs):
+        return GR4diagram(self, *args, **kwargs)
 
 
 class GR4diagram:
@@ -701,7 +701,7 @@ def GR4_demo(kind="block"):
             time=np.linspace(0, 10, 1000),
             rain_func=lambda t: 50 if t < 2 else 0
         )
-    GR4App(GR4h(Catchment(8/100, 40, 0.1, 1), rain))
+    GR4h(Catchment(8/100, 40, 0.1, 1), rain).App()
 
 
 if __name__ == "__main__":
