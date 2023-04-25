@@ -163,14 +163,13 @@ class GR4diagram:
                  rain_margin=7,
                  show=True) -> None:
 
-        self.style = style
         self.colors = colors
         self.flows_margin = flows_margin
         self.rain_margin = rain_margin
 
-        self.draw(event, show=show)
+        self.draw(event, style=style, show=show)
 
-    def draw(self, event: Event, show=True):
+    def draw(self, event: Event, style: str = "seaborn", show=True):
         """Plots a diagram with rainfall, water flow and discharge"""
 
         time = event.time
@@ -180,7 +179,7 @@ class GR4diagram:
         Qv = event.discharge_volume
         Q = event.discharge
 
-        with plt.style.context(self.style):
+        with plt.style.context(style):
 
             c1, c2, c3, c4, c5 = self.colors
 
@@ -262,8 +261,8 @@ class GR4diagram:
 
             self.fig, self.axes, self.lines = fig, (ax1, ax2, ax3), lines
 
-            if show:
-                plt.show()
+        if show:
+            plt.show()
         return self
 
     def update(self, event, rain_obj):
@@ -384,8 +383,8 @@ class GR4h:
 
         self.diagram = GR4diagram(self.event, *args, **kwargs)
 
-    def App(self):
-        GR4App(self)
+    def App(self, *args, **kwargs):
+        GR4App(self, show=False, *args, **kwargs)
 
 
 def gr4_diff(catchment, rain):
@@ -528,7 +527,10 @@ class GR4App:
 
     def __init__(self, gr4: GR4h,
                  appearance: str = "dark",
-                 color_theme: str = "dark-blue"):
+                 color_theme: str = "dark-blue",
+                 style: str = "seaborn",
+                 close_and_clear: bool = True,
+                 *args, **kwargs):
 
         self.gr4 = gr4
 
@@ -545,7 +547,7 @@ class GR4App:
         self.dframe = ctk.CTkFrame(master=self.root)
         self.dframe.grid(row=0, column=1, sticky="NSEW")
 
-        self.init_diagram()
+        self.init_diagram(style=style, *args, **kwargs)
 
         self.pframe = ctk.CTkFrame(master=self.root)
         self.pframe.grid(column=0, row=0, sticky="NSEW")
@@ -576,10 +578,12 @@ class GR4App:
                       ).grid(pady=10)
 
         self.root.mainloop()
+        if close_and_clear:
+            plt.close()
 
-    def init_diagram(self):
+    def init_diagram(self, *args, **kwargs):
 
-        diagram = GR4diagram(self.gr4.event, show=False)
+        diagram = GR4diagram(self.gr4.event, *args, **kwargs)
 
         self.ax1, self.ax2, self.ax3 = diagram.axes
 
