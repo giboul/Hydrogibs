@@ -47,7 +47,7 @@ class Rain:
         return GR4h(catchment, self).apply()
 
 
-class BlockRain:
+class BlockRain(Rain):
     """
     A constant rain with a limited duration.
 
@@ -129,7 +129,7 @@ class Catchment:
         assert 0 <= X4, "Raising time must be positive"
 
     def __matmul__(self, rain):
-        return GR4h(self, rain)
+        return rain @ self
 
 
 Event = namedtuple("Event",
@@ -691,13 +691,13 @@ class GR4App:
 def GR4_demo(kind="block"):
 
     if kind == "block":
-        gr4 = Catchment(8/100, 40, 0.1, 1) @ BlockRain(50, duration=1.8)
+        rain = BlockRain(50, duration=1.8)
     else:
-        gr4 = Catchment(8/100, 40, 0.1, 1, initial_volume=30) @ Rain(
+        rain = Rain(
             time=np.linspace(0, 10, 1000),
             rain_func=lambda t: 50 if t < 2 else 0
         )
-    gr4.App()
+    GR4App(GR4h(Catchment(8/100, 40, 0.1, 1), rain))
 
 
 if __name__ == "__main__":
