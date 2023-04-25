@@ -2,3 +2,4 @@
 dist/
 hydrogibs.egg-info/
 hydrogibs/__pycache__/
+test.py

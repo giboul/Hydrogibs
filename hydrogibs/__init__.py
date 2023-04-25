@@ -1,5 +1,1 @@
-import misc
-import GR4
-import QDF
-import RationalMethod
-import SoCoSe
+from hydrogibs import misc, GR4, QDF, RationalMethod, SoCoSe

@@ -1,5 +1,5 @@
 import numpy as np
-from misc import crupedix, Turraza
+from hydrogibs.misc import crupedix, Turraza
 
 
 class QdF:
