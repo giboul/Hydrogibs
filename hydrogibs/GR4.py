@@ -4,21 +4,28 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg,\
     NavigationToolbar2Tk
 from matplotlib.backend_bases import key_press_handler
 import customtkinter as ctk
-from typing import Callable
+from typing import Callable, Literal
 
 
-def _transfer_func(n: float, X4: float):  # m/km/s
+def _transfer_func(X4: float, num: int) -> np.ndarray:  # m/km/s
     """
     This function will make the transition between the
     water flow and the discharge through a convolution
 
     discharge = convolution(_transfer_func(water_flow, time/X4))
+
+    Args:
+        - X4  (float): the hydrogram's raising time
+        - num  (int) : the number of elements to give to the array
+
+    Returns:
+        - f (np.ndarray): = 3/(2*X4) * n**2            if n <= 1
+                            3/(2*X4) * (2-n[n > 1])**2 if n >  1
     """
-    if n < 1:
-        return 3/(2*X4) * n**2
-    if n < 2:
-        return 3/(2*X4) * (2-n)**2
-    return 0
+    n = np.linspace(0, 2, num)
+    f = 3/(2*X4) * n**2
+    f[n > 1] = 3/(2*X4) * (2-n[n > 1])**2
+    return f
 
 
 class Rain:
@@ -35,11 +42,10 @@ class Rain:
     >>> event = rain @ catchment
     """
 
-    def __init__(self, time: np.ndarray, rain_func: Callable) -> None:
+    def __init__(self, time: np.ndarray, rainfall: np.ndarray) -> None:
 
-        self.time = time
-        self.rain_func = rain_func
-        self.rainfall = np.array([rain_func(t) for t in time])
+        self.time = np.asarray(time)
+        self.rainfall = np.asarray(rainfall)
         self.timestep = time[1] - time[0]
 
     def __matmul__(self, catchment):
@@ -112,14 +118,16 @@ class Catchment:
                  X4: float,
                  surface: float = 1,
                  initial_volume: float = 0,
-                 transfer_function: Callable = _transfer_func) -> None:
+                 transfer_function: Callable = None) -> None:
 
         self.X1 = X1
         self.X2 = X2
         self.X3 = X3
         self.X4 = X4
         self.surface = surface
-        self.transfer_function = transfer_function
+        self.transfer_function = (transfer_function
+                                  if transfer_function is not None
+                                  else _transfer_func)
         self.initial_volume = initial_volume
 
         assert 0 <= X1 <= 1, "Runoff coefficient must be within [0 : 1]"
@@ -143,8 +151,6 @@ class Event:
                  time: np.ndarray,
                  rainfall: np.ndarray,
                  volume: np.ndarray,
-                 water_flow_rain: np.ndarray,
-                 water_flow_volume: np.ndarray,
                  water_flow: np.ndarray,
                  discharge_rain: np.ndarray,
                  discharge_volume: np.ndarray,
@@ -153,8 +159,6 @@ class Event:
         self.time = time
         self.rainfall = rainfall
         self.volume = volume
-        self.water_flow_rain = water_flow_rain
-        self.water_flow_volume = water_flow_volume
         self.water_flow = water_flow
         self.discharge_rain = discharge_rain
         self.discharge_volume = discharge_volume
@@ -426,27 +430,22 @@ def gr4_diff(catchment, rain):
     dP_effective[time < t1] = 0
 
     # solution to the differential equation V' = -X3*V + (1-X1)*P
-    V = (
-        np.exp(-X3*time) * (1-X1) *
-        np.cumsum(np.exp(X3*time) * dP_effective) * dt
-    )
-    V = V + V0 * np.exp(-X3*time)
+    integral = np.cumsum(np.exp(X3*time) * dP_effective) * dt
+    cond_init = V0 * np.exp(-X3*time)
+    V = np.exp(-X3*time) * (1-X1) * integral + cond_init
 
     t_abstraction = time < t1
     dTp = X1*dP
-    dTp[t_abstraction] = 0
     dTv = X3*V
+    dTp[t_abstraction] = 0
     dTv[t_abstraction] = 0
 
-    q = np.array([
-        catchment.transfer_function(ni, X4)
-        for ni in time[time <= 2*X4]/X4
-    ])
+    q = catchment.transfer_function(X4, num=(time <= 2*X4).sum())
 
     Qp = S * np.convolve(dTp, q)[:time.size] * dt
     Qv = S * np.convolve(dTv, q)[:time.size] * dt
 
-    return Event(time, dP, V, dTp, dTv, dTp+dTv, Qp, Qv, Qp+Qv)
+    return Event(time, dP, V, dTp+dTv, Qp, Qv, Qp+Qv)
 
 
 def gr4_block_rain(catchment, block_rain) -> dict:
@@ -486,8 +485,6 @@ def gr4_block_rain(catchment, block_rain) -> dict:
 
     S = catchment.surface
     V0 = catchment.initial_volume
-
-    transfer_function = catchment.transfer_function
 
     # Unpack rain attributes
     dt = block_rain.timestep
@@ -533,15 +530,13 @@ def gr4_block_rain(catchment, block_rain) -> dict:
     dTv[i] = X3*V[i]
 
     # Evaluate transfer function
-    q = np.array([
-        transfer_function(ni, X4)
-        for ni in t[t <= 2*X4]/X4
-    ])
+    q = catchment.transfer_function(X4, num=(t <= 2*X4).sum())
+
     # Convolve
     Qp = S * np.convolve(dTp, q)[:t.size] * dt
     Qv = S * np.convolve(dTv, q)[:t.size] * dt
 
-    return Event(t, rainfall, V, dTp, dTv, dTp+dTv, Qp, Qv, Qp+Qv)
+    return Event(t, rainfall, V, dTp+dTv, Qp, Qv, Qp+Qv)
 
 
 class GR4App:
@@ -561,9 +556,6 @@ class GR4App:
         self.root = ctk.CTk()
         self.root.title("Génie Rural 4")
         self.root.bind('<Return>', self.entries_update)
-        # self.ww = self.root.winfo_screenwidth()
-        # self.wh = self.root.winfo_screenheight()
-        # self.root.geometry(f"{self.ww*0.8:.0f}x{self.wh*0.5:.0f}")
 
         self.dframe = ctk.CTkFrame(master=self.root)
         self.dframe.grid(row=0, column=1, sticky="NSEW")
@@ -572,13 +564,6 @@ class GR4App:
 
         self.pframe = ctk.CTkFrame(master=self.root)
         self.pframe.grid(column=0, row=0, sticky="NSEW")
-
-        # entryframe = ctk.CTkLabel(text="GR4 parameters",
-        #                           master=self.pframe,
-        #                           font=("monospace", 24))
-        # entryframe.grid(row=0, column=0,
-        #                 sticky="NSEW",
-        #                 ipadx=5, ipady=10)
 
         self.entries = dict()
         self.define_entry("X1", "-")
@@ -717,17 +702,19 @@ class GR4App:
         self.canvas.draw()
 
 
-def GR4_demo(kind="block"):
+def GR4_demo(kind: str = "array"):
 
     if kind == "block":
         rain = BlockRain(50, duration=1.8)
     else:
+        time = np.linspace(0, 10, 1000)
+        rainfall = np.array([50 if t < 2 else 0 for t in time])
         rain = Rain(
-            time=np.linspace(0, 10, 1000),
-            rain_func=lambda t: 50 if t < 2 else 0
+            time=time,
+            rainfall=rainfall
         )
     GR4h(Catchment(8/100, 40, 0.1, 1), rain).App()
 
 
 if __name__ == "__main__":
-    GR4_demo()
+    GR4_demo("block")
