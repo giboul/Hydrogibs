@@ -1,10 +1,7 @@
 import numpy as np
 from matplotlib import pyplot as plt
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg,\
-    NavigationToolbar2Tk
-from matplotlib.backend_bases import key_press_handler
-import customtkinter as ctk
 from typing import Callable, Literal
+from ModelApp import ModelApp, Entry
 
 
 def _transfer_func(X4: float, num: int) -> np.ndarray:  # m/km/s
@@ -74,25 +71,33 @@ class BlockRain(Rain):
                  timestep: float = None,
                  observation_span: float = None) -> None:
 
-        if observation_span is None:
-            observation_span = 5*duration
-        timestep = timestep if timestep is not None else duration/100
-        time = np.arange(0, observation_span, timestep)
-
-        rainfall = np.full_like(time, intensity)
-        rainfall[time > duration] = 0
-
-        self.time = time
-        self.intensity = intensity
-        self.duration = duration
-        self.timestep = timestep if timestep is not None else duration/200
-        self.observation_span = observation_span
-        self.rainfall = rainfall
+        timestep = timestep if timestep is not None else duration/200
+        observation_span = (observation_span if observation_span
+                            else 5 * duration)
 
         assert 0 <= intensity
         assert 0 <= duration
         assert 0 <= timestep <= duration
         assert 0 <= observation_span > duration
+
+        self.intensity = intensity
+        self.duration = duration
+        self.timestep = timestep
+        self.observation_span = observation_span
+
+    def to_rain(self):
+
+        time = np.arange(0, self.observation_span, self.timestep)
+        rainfall = np.full_like(time, self.intensity)
+        rainfall[time > self.duration] = 0
+
+        self.time = time
+        self.rainfall = rainfall
+
+        return self
+
+    def __matmul__(self, catchment):
+        return self.to_rain() @ catchment
 
 
 class Catchment:
@@ -120,6 +125,11 @@ class Catchment:
                  initial_volume: float = 0,
                  transfer_function: Callable = None) -> None:
 
+        assert 0 <= X1 <= 1, "Runoff coefficient must be within [0 : 1]"
+        assert 0 <= X2, "Initial abstraction must be positive"
+        assert 0 <= X3 <= 1, "Emptying rate must be within [0 : 1]"
+        assert 0 <= X4, "Raising time must be positive"
+
         self.X1 = X1
         self.X2 = X2
         self.X3 = X3
@@ -129,11 +139,6 @@ class Catchment:
                                   if transfer_function is not None
                                   else _transfer_func)
         self.initial_volume = initial_volume
-
-        assert 0 <= X1 <= 1, "Runoff coefficient must be within [0 : 1]"
-        assert 0 <= X2, "Initial abstraction must be positive"
-        assert 0 <= X3 <= 1, "Emptying rate must be within [0 : 1]"
-        assert 0 <= X4, "Raising time must be positive"
 
     def __matmul__(self, rain):
         return rain @ self
@@ -383,34 +388,45 @@ class GR4h:
         self.catchment = catchment
         self.rain = rain
 
-        if isinstance(self.rain, BlockRain):
-            self.apply = self.apply_block_rain
-        else:
-            self.apply = self.apply_rain
-
         self.apply()
 
-    def apply_block_rain(self):
+    def apply(self):
 
-        self.event = gr4_block_rain(self.catchment, self.rain)
+        rain = self.rain
+        if isinstance(rain, BlockRain):
+            rain = rain.to_rain()
 
-        return self.event
-
-    def apply_rain(self):
-
-        self.event = gr4_diff(self.catchment, self.rain)
+        self.event = gr4(self.catchment, rain)
 
         return self.event
 
-    def create_diagram(self, *args, **kwargs):
+    def diagram(self, *args, **kwargs):
 
         self.diagram = GR4diagram(self.event, *args, **kwargs)
 
+        return self.diagram
+
     def App(self, *args, **kwargs):
-        GR4App(self, show=False, *args, **kwargs)
+        entries = [
+            ("catchment", "X1", "-"),
+            ("catchment", "X2", "mm"),
+            ("catchment", "X3", "1/h"),
+            ("catchment", "X4", "h"),
+            ("catchment", "surface", "km²", "S"),
+            ("catchment", "initial_volume", "mm", "V0"),
+        ]
+
+        if isinstance(self.rain, BlockRain):
+            entries += [
+                ("rain", "observation_span", "mm", "tf"),
+                ("rain", "intensity", "mm/h", "I0"),
+                ("rain", "duration", "h", "t0")
+            ]
+        entries = [Entry(*entry) for entry in entries]
+        ModelApp(self, title="Génie rural 4", entries=entries, *args, **kwargs)
 
 
-def gr4_diff(catchment, rain):
+def gr4(catchment, rain):
 
     X1 = catchment.X1
     X2 = catchment.X2
@@ -448,267 +464,14 @@ def gr4_diff(catchment, rain):
     return Event(time, dP, V, dTp+dTv, Qp, Qv, Qp+Qv)
 
 
-def gr4_block_rain(catchment, block_rain) -> dict:
-    """
-    This method is fit for block events
-    (constant rainfall intensity during a defined duration)
-
-    Args:
-        intensity         (float) [mm/h]: Ranfall intensity
-        duration          (float) [h]: Rainfall duration
-        observation_span  (float) [h]: Observation duration,
-                                        default to 10*duration if not specified
-        timestep          (float) [h]: Timestep,
-                                        default to 0.01 if not specified
-        inital_volume     (float) [mm]: Initial sub-surface volume,
-                                        default to 0.0 if not specified
-        transfer_function (callable): the transfer function,
-                                        discharge = convolution(
-                                            water_flow,
-                                            transfer_function
-                                        )
-
-    Returns:
-        GR4h object with the attributes:
-            rainfall   (numpy 1Darray)
-            volume     (numpy 1Darray)
-            water_flow (numpy 1Darray)
-            time       (numpy 1Darray)
-            discharge  (numpy 1Darray)
-    """
-
-    # Unpack catchment attributes
-    X1 = catchment.X1
-    X2 = catchment.X2
-    X3 = catchment.X3
-    X4 = catchment.X4
-
-    S = catchment.surface
-    V0 = catchment.initial_volume
-
-    # Unpack rain attributes
-    dt = block_rain.timestep
-    t0 = block_rain.duration
-    tf = block_rain.observation_span
-
-    I0 = block_rain.intensity
-    rainfall = block_rain.rainfall
-
-    dtype = np.float16
-
-    # Initializing time
-    tf = 10*t0 if tf is None else tf
-    t = np.arange(start=0, stop=tf, step=dt)
-
-    # End of abstraction
-    t1 = X2/I0
-
-    # Initialize volume
-    V = np.zeros_like(t, dtype=dtype)
-    V += V0
-
-    dTp = np.zeros_like(t, dtype=dtype)
-    dTv = np.zeros_like(t, dtype=dtype)
-
-    # Initial abstraction
-    i = t < t1
-    A = np.zeros_like(t, dtype=dtype)
-    A[i] = I0*t[i]
-    A[t >= t1] = A[i][-1]
-
-    # Runoff + rain
-    i = (t >= t1) & (t <= t0)
-    V[i] += I0*(1-X1)/X3 * (1 - np.exp(-(t[i]-t1)*X3))
-    V1 = V[i][-1] if V[i].size else 0
-
-    dTp[i] = X1*I0
-    dTv[i] = X3*V[i]
-
-    # Runoff, no more rain
-    i = t >= t0
-    V[i] = V1 * np.exp(-(t[i]-t0)*X3)
-    dTv[i] = X3*V[i]
-
-    # Evaluate transfer function
-    q = catchment.transfer_function(X4, num=(t <= 2*X4).sum())
-
-    # Convolve
-    Qp = S * np.convolve(dTp, q)[:t.size] * dt
-    Qv = S * np.convolve(dTv, q)[:t.size] * dt
-
-    return Event(t, rainfall, V, dTp+dTv, Qp, Qv, Qp+Qv)
-
-
-class GR4App:
-
-    def __init__(self, gr4: GR4h,
-                 appearance: str = "dark",
-                 color_theme: str = "dark-blue",
-                 style: str = "seaborn",
-                 close_and_clear: bool = True,
-                 *args, **kwargs):
-
-        self.gr4 = gr4
-
-        ctk.set_appearance_mode(appearance)
-        ctk.set_default_color_theme(color_theme)
-
-        self.root = ctk.CTk()
-        self.root.title("Génie Rural 4")
-        self.root.bind('<Return>', self.entries_update)
-
-        self.dframe = ctk.CTkFrame(master=self.root)
-        self.dframe.grid(row=0, column=1, sticky="NSEW")
-
-        self.init_diagram(style=style, *args, **kwargs)
-
-        self.pframe = ctk.CTkFrame(master=self.root)
-        self.pframe.grid(column=0, row=0, sticky="NSEW")
-
-        self.entries = dict()
-        self.define_entry("X1", "-")
-        self.define_entry("X2", "mm")
-        self.define_entry("X3", "1/h")
-        self.define_entry("X4", "h")
-        self.define_entry("surface", "km²", "S")
-        self.define_entry("initial_volume", "mm", "V0")
-
-        if isinstance(self.gr4.rain, BlockRain):
-            self.define_entry("observation_span", "mm", "tf")
-            self.define_entry("intensity", "mm/h", "I0")
-            self.define_entry("duration", "h", "t0")
-
-        ctk.CTkButton(master=self.pframe,
-                      text="Reset zoom",
-                      command=lambda: self.diagram.zoom(self.canvas)
-                      ).grid(pady=10)
-
-        self.root.mainloop()
-        if close_and_clear:
-            plt.close()
-
-    def init_diagram(self, *args, **kwargs):
-
-        diagram = GR4diagram(self.gr4.event, *args, **kwargs)
-
-        self.ax1, self.ax2, self.ax3 = diagram.axes
-
-        self.canvas = FigureCanvasTkAgg(diagram.fig, master=self.dframe)
-        toolbar = NavigationToolbar2Tk(self.canvas)
-        toolbar.update()
-        self.canvas._tkcanvas.pack()
-        self.canvas.draw()
-        self.canvas.get_tk_widget().pack()
-        self.canvas.mpl_connect('key_press_event',
-                                lambda arg: key_press_handler(
-                                    arg, self.canvas, toolbar
-                                ))
-        self.diagram = diagram
-        self.root.update()
-
-    def define_entry(self, key: str, unit, alias: str = None):
-
-        entryframe = ctk.CTkFrame(master=self.pframe)
-        entryframe.grid(sticky="NSEW")
-        unit_str = f"[{unit}]"
-        name = key if alias is None else alias
-        label = ctk.CTkLabel(master=entryframe,
-                             text=f"{name:>5} {unit_str:>6} ",
-                             font=("monospace", 14))
-        label.grid(row=0, column=0, sticky="EW", ipady=5)
-
-        input = ctk.CTkEntry(master=entryframe)
-
-        if hasattr(self.gr4.catchment, key):
-            value = getattr(self.gr4.catchment, key)
-            input.insert(0, value)
-        elif hasattr(self.gr4.rain, key):
-            value = getattr(self.gr4.rain, key)
-            input.insert(0, value)
-        else:
-            raise KeyError(f"{key} not an attribute")
-
-        input.grid(row=0, column=1, sticky="EW")
-
-        slider = ctk.CTkSlider(master=entryframe,
-                               from_=0, to=2*value if value else 1,
-                               number_of_steps=999,
-                               command=lambda _: self.slider_update(key))
-        slider.grid(row=0, column=2, sticky="EW")
-
-        self.entries[key] = dict(
-            label=label,
-            input=input,
-            slider=slider
-        )
-
-    def slider_update(self, key):
-
-        v = self.entries[key]["slider"].get()
-        self.entries[key]["input"].delete(0, ctk.END)
-        self.entries[key]["input"].insert(0, f"{v:.2f}")
-
-        if hasattr(self.gr4.catchment, key):
-            setattr(self.gr4.catchment, key, v)
-        elif hasattr(self.gr4.rain, key):
-            setattr(self.gr4.rain, key, v)
-        else:
-            raise KeyError(f"{key} not an attribute")
-
-        if key == "observation_span":
-            rain = self.gr4.rain
-            self.gr4.rain = BlockRain(
-                observation_span=v,
-                intensity=rain.intensity,
-                duration=rain.duration,
-                timestep=rain.timestep
-            )
-
-        self.update()
-
-    def entries_update(self, _):
-        for key in self.entries:
-            v = float(self.entries[key]['input'].get())
-            self.entries[key]["slider"].configure(to=2*v if v else 1)
-            if v:
-                self.entries[key]["slider"].set(v)
-
-            if key == "observation_span":
-                rain = self.gr4.rain
-                self.gr4.rain = BlockRain(
-                    observation_span=v,
-                    intensity=rain.intensity,
-                    duration=rain.duration,
-                    timestep=rain.timestep
-                )
-            elif key == "initial_volume":
-                kwargs = self.gr4.catchment.__dict__
-                del kwargs[key]
-                self.gr4.catchment = Catchment(initial_volume=v, **kwargs)
-            else:
-                if hasattr(self.gr4.catchment, key):
-                    setattr(self.gr4.catchment, key, v)
-                elif hasattr(self.gr4.rain, key):
-                    setattr(self.gr4.rain, key, v)
-                else:
-                    raise KeyError(f"{key} not an attribute")
-
-        self.update()
-
-    def update(self):
-
-        self.gr4.apply()
-        self.diagram.update(self.gr4.event, self.gr4.rain)
-        self.canvas.draw()
-
-
-def GR4_demo(kind: str = "array"):
+def GR4_demo(kind: Literal["array", "block"] = "array"):
 
     if kind == "block":
         rain = BlockRain(50, duration=1.8)
     else:
         time = np.linspace(0, 10, 1000)
-        rainfall = np.array([50 if t < 2 else 0 for t in time])
+        rainfall = np.full_like(time, 50)
+        rainfall[(3 <= time) & (time <= 7) | (time >= 9)] = 0
         rain = Rain(
             time=time,
             rainfall=rainfall
