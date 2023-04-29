@@ -208,28 +208,24 @@ class GR4diagram(ModelTemplate.Diagram):
             fig, ax1 = plt.subplots(figsize=(7, 3.5), dpi=100)
             ax1.set_title("Runoff response to rainfall")
 
-            patch = ax1.fill_between(
-                x=time,
-                y1=Q,
-                y2=np.maximum(Qv, Qp),
-                alpha=0.5,
-                lw=0.0,
+            lineQ, = ax1.plot(
+                time,
+                Q,
+                lw=2,
                 color=c1,
                 label="total discharge"
             )
-            patch1 = ax1.fill_between(
+            lineQp, = ax1.plot(
                 time,
                 Qp,
-                alpha=0.3,
-                lw=0.0,
+                lw=1,
                 color=c4,
                 label="Runoff discharge"
             )
-            patch2 = ax1.fill_between(
+            lineQv, = ax1.plot(
                 time,
                 Qv,
-                alpha=0.3,
-                lw=0.0,
+                lw=1,
                 color=c5,
                 label="Sub-surface discharge"
             )
@@ -247,11 +243,10 @@ class GR4diagram(ModelTemplate.Diagram):
             ax1.set_yticklabels(yticks, color=c1)
 
             ax2 = ax1.twinx()
-            bars = ax2.bar(
+            lineP, = ax2.step(
                 time,
                 rain,
                 alpha=0.5,
-                width=time[1]-time[0],
                 color=c2,
                 label="Rainfall"
             )
@@ -262,8 +257,8 @@ class GR4diagram(ModelTemplate.Diagram):
             ax2.set_yticklabels(ax2.get_yticklabels(), color=c2)
 
             ax3 = ax2.twinx()
-            line, = ax3.plot(time, dT, "-.",
-                             color=c3, label="Water flow", lw=1.5)
+            lineT, = ax3.plot(time, dT, "-.",
+                              color=c3, label="Water flow", lw=1.5)
             ax3.set_ylabel("$\\dot{T}$ (mm/h)", color=c3)
             ax3.set_xlabel("$t$ (h)")
             ax3.set_ylim((0, (1 + self.flows_margin) * dT.max()))
@@ -277,7 +272,7 @@ class GR4diagram(ModelTemplate.Diagram):
             ax3.set_yscale("linear")
             ax3.grid(False)
 
-            lines = (bars, patch, patch1, patch2, line)
+            lines = (lineP, lineQ, lineQp, lineQv, lineT)
             labs = [line.get_label() for line in lines]
             ax1.legend(lines, labs)
 
@@ -294,27 +289,11 @@ class GR4diagram(ModelTemplate.Diagram):
         rainfall = event.rainfall
         rain, discharge, discharge_p, discharge_v, water_flow = self.lines
 
-        discharge.set_verts((
-            list(zip(  # transposing data
-                np.concatenate((time, time[::-1])),
-                np.concatenate((
-                    event.discharge,
-                    np.maximum(
-                        event.discharge_rain,
-                        event.discharge_volume)[::-1]
-                ))
-            )),
-        ))
-        discharge_p.set_verts((
-            list(zip(time, event.discharge_rain)) + [(time[-1], 0)],
-        ))
-        discharge_v.set_verts((
-            list(zip(time, event.discharge_volume)) + [(time[-1], 0)],
-        ))
+        discharge.set_data(time, event.discharge)
+        discharge_p.set_data(time, event.discharge_rain)
+        discharge_v.set_data(time, event.discharge_volume)
         water_flow.set_data(time, event.water_flow)
-
-        for rect, r in zip(rain, rainfall):
-            rect.set_height(r)
+        rain.set_data(time, rainfall)
 
     def zoom(self, canvas):
 
