@@ -7,6 +7,8 @@ from matplotlib.backend_bases import key_press_handler
 from matplotlib.pyplot import close
 import customtkinter as ctk
 
+from ModelTemplate import Catchment, Rain
+
 
 class Entry:
 
@@ -24,7 +26,8 @@ class Entry:
 class ModelApp:
 
     def __init__(self,
-                 model,
+                 catchment: Catchment,
+                 rain: Rain,
                  entries: Tuple[Entry],
                  title: str = None,
                  appearance: str = "dark",
@@ -33,7 +36,9 @@ class ModelApp:
                  close_and_clear: bool = True,
                  *args, **kwargs):
 
-        self.model = model
+        self.catchment = catchment
+        self.rain = rain
+        self.event = rain @ catchment
 
         ctk.set_appearance_mode(appearance)
         ctk.set_default_color_theme(color_theme)
@@ -66,11 +71,9 @@ class ModelApp:
 
     def init_diagram(self, *args, **kwargs):
 
-        diagram = self.model.diagram(*args, **kwargs)
+        diagram = self.event.diagram(*args, **kwargs)
 
-        self.ax1, self.ax2, self.ax3 = diagram.axes
-
-        self.canvas = FigureCanvasTkAgg(diagram.fig, master=self.dframe)
+        self.canvas = FigureCanvasTkAgg(diagram.figure, master=self.dframe)
         toolbar = NavigationToolbar2Tk(self.canvas)
         toolbar.update()
         self.canvas._tkcanvas.pack()
@@ -103,9 +106,9 @@ class ModelApp:
         input = ctk.CTkEntry(master=entryframe)
 
         if object == "catchment":
-            value = getattr(self.model.catchment, key)
+            value = getattr(self.catchment, key)
         elif object == "rain":
-            value = getattr(self.model.rain, key)
+            value = getattr(self.rain, key)
         else:
             raise KeyError(f"{key} not an object")
         input.insert(0, value)
@@ -134,7 +137,6 @@ class ModelApp:
         value = self.entries[key]["slider"].get()
         self.entries[key]["input"].delete(0, ctk.END)
         self.entries[key]["input"].insert(0, f"{value:.2f}")
-
         self.update_attribute(object, key, value)
         self.update()
 
@@ -156,14 +158,14 @@ class ModelApp:
     def update_attribute(self, object: str, key, value):
 
         if object == "catchment":
-            setattr(self.model.catchment, key, value)
+            setattr(self.catchment, key, value)
         elif object == "rain":
-            setattr(self.model.rain, key, value)
+            setattr(self.rain, key, value)
         else:
             raise KeyError(f"{key} not an attribute")
 
     def update(self):
 
-        self.model.apply()
-        self.diagram.update(self.model.event, self.model.rain)
+        event = self.rain @ self.catchment
+        self.diagram.update(event)
         self.canvas.draw()

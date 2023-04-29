@@ -2,6 +2,7 @@ import numpy as np
 from matplotlib import pyplot as plt
 from typing import Callable, Literal
 from ModelApp import ModelApp, Entry
+import ModelTemplate as ModelTemplate
 
 
 def _transfer_func(X4: float, num: int) -> np.ndarray:  # m/km/s
@@ -25,7 +26,7 @@ def _transfer_func(X4: float, num: int) -> np.ndarray:  # m/km/s
     return f
 
 
-class Rain:
+class Rain(ModelTemplate.Rain):
     """
     Rain object to apply to a Catchment object.
 
@@ -46,7 +47,9 @@ class Rain:
         self.timestep = time[1] - time[0]
 
     def __matmul__(self, catchment):
-        return GR4h(catchment, self).apply()
+        if isinstance(self, BlockRain):
+            return gr4(rain=self.to_rain(), catchment=catchment)
+        return gr4(rain=self, catchment=catchment)
 
 
 class BlockRain(Rain):
@@ -97,10 +100,10 @@ class BlockRain(Rain):
         return self
 
     def __matmul__(self, catchment):
-        return self.to_rain() @ catchment
+        return gr4(rain=self.to_rain(), catchment=catchment)
 
 
-class Catchment:
+class Catchment(ModelTemplate.Catchment):
     """
     Stores GR4h catchment parameters.
 
@@ -144,7 +147,7 @@ class Catchment:
         return rain @ self
 
 
-class Event:
+class Event(ModelTemplate.Event):
     """
     Stores all relevant results of a GR4h calculation
 
@@ -173,7 +176,7 @@ class Event:
         return GR4diagram(self, *args, **kwargs)
 
 
-class GR4diagram:
+class GR4diagram(ModelTemplate.Diagram):
 
     def __init__(self,
                  event: Event,
@@ -190,11 +193,6 @@ class GR4diagram:
         self.colors = colors
         self.flows_margin = flows_margin
         self.rain_margin = rain_margin
-
-        self.draw(event, style=style, show=show)
-
-    def draw(self, event: Event, style: str = "seaborn", show=True):
-        """Plots a diagram with rainfall, water flow and discharge"""
 
         time = event.time
         rain = event.rainfall
@@ -285,20 +283,20 @@ class GR4diagram:
 
             plt.tight_layout()
 
-            self.fig, self.axes, self.lines = fig, (ax1, ax2, ax3), lines
+            self.figure, self.axes, self.lines = fig, (ax1, ax2, ax3), lines
 
         if show:
             plt.show()
-        return self
 
-    def update(self, event, rain_obj):
+    def update(self, event):
 
-        t = event.time
+        time = event.time
+        rainfall = event.rainfall
         rain, discharge, discharge_p, discharge_v, water_flow = self.lines
 
         discharge.set_verts((
             list(zip(  # transposing data
-                np.concatenate((t, t[::-1])),
+                np.concatenate((time, time[::-1])),
                 np.concatenate((
                     event.discharge,
                     np.maximum(
@@ -308,21 +306,15 @@ class GR4diagram:
             )),
         ))
         discharge_p.set_verts((
-            list(zip(t, event.discharge_rain)) + [(t[-1], 0)],
+            list(zip(time, event.discharge_rain)) + [(time[-1], 0)],
         ))
         discharge_v.set_verts((
-            list(zip(t, event.discharge_volume)) + [(t[-1], 0)],
+            list(zip(time, event.discharge_volume)) + [(time[-1], 0)],
         ))
-        water_flow.set_data(t, event.water_flow)
+        water_flow.set_data(time, event.water_flow)
 
-        if isinstance(rain_obj, BlockRain):
-            I0 = rain_obj.intensity
-            d = rain_obj.duration
-            for rect, v in zip(rain, t):
-                if v <= d:
-                    rect.set_height(I0)
-                else:
-                    rect.set_height(0)
+        for rect, r in zip(rain, rainfall):
+            rect.set_height(r)
 
     def zoom(self, canvas):
 
@@ -359,71 +351,37 @@ class GR4diagram:
         canvas.draw()
 
 
-class GR4h:
-    """
-    Object storing a Catchment object, a Rain object, and Event object
-    and eventually attributes relative to a diagram
+def GR4app(catchment: Catchment = None,
+           rain: Rain = None,
+           *args, **kwargs):
+    if catchment is None:
+        catchment = Catchment(8/100, 40, 0.1, 1)
+    if rain is None:
+        rain = BlockRain(50, duration=1.8)
+    entries = [
+        ("catchment", "X1", "-"),
+        ("catchment", "X2", "mm"),
+        ("catchment", "X3", "1/h"),
+        ("catchment", "X4", "h"),
+        ("catchment", "surface", "km²", "S"),
+        ("catchment", "initial_volume", "mm", "V0"),
+    ]
 
-    A GR4h object is obtained when called with a Rain and a Catchment objects:
-        >>> catchment = Catchment(X1=8/100, X2=40, X3=0.1, X4=1)
-        >>> rain = BlockRain(intensity=50)
-        >>> gr4h: GR4h = GR4h(catchment, rain)  # second syntax
-        >>> gr4h.App()  # opens an interactive diagram in a tkinter window
-
-    Args:
-        catchment (Catchment): contains essential parameters
-        rain      (Rain): contains the rainfall event details
-
-    Returns:
-        gr4h (GR4h): Object contaning an Event object (discharges, water flow)
-        gr4h.event (Event): Contains the following arrays:
-                                - volume
-                                - water_flow
-                                - discharge
-                            The corresponding time is stored in gr4h.rain.time
-    """
-
-    def __init__(self, catchment: Catchment, rain: Rain) -> None:
-
-        self.catchment = catchment
-        self.rain = rain
-
-        self.apply()
-
-    def apply(self):
-
-        rain = self.rain
-        if isinstance(rain, BlockRain):
-            rain = rain.to_rain()
-
-        self.event = gr4(self.catchment, rain)
-
-        return self.event
-
-    def diagram(self, *args, **kwargs):
-
-        self.diagram = GR4diagram(self.event, *args, **kwargs)
-
-        return self.diagram
-
-    def App(self, *args, **kwargs):
-        entries = [
-            ("catchment", "X1", "-"),
-            ("catchment", "X2", "mm"),
-            ("catchment", "X3", "1/h"),
-            ("catchment", "X4", "h"),
-            ("catchment", "surface", "km²", "S"),
-            ("catchment", "initial_volume", "mm", "V0"),
+    if isinstance(rain, BlockRain):
+        entries += [
+            ("rain", "observation_span", "mm", "tf"),
+            ("rain", "intensity", "mm/h", "I0"),
+            ("rain", "duration", "h", "t0")
         ]
-
-        if isinstance(self.rain, BlockRain):
-            entries += [
-                ("rain", "observation_span", "mm", "tf"),
-                ("rain", "intensity", "mm/h", "I0"),
-                ("rain", "duration", "h", "t0")
-            ]
-        entries = [Entry(*entry) for entry in entries]
-        ModelApp(self, title="Génie rural 4", entries=entries, *args, **kwargs)
+    entries = map(lambda e: Entry(*e), entries)
+    ModelApp(
+        catchment=catchment,
+        rain=rain,
+        title="Génie rural 4",
+        entries=entries,
+        *args,
+        **kwargs
+    )
 
 
 def gr4(catchment, rain):
@@ -476,7 +434,8 @@ def GR4_demo(kind: Literal["array", "block"] = "array"):
             time=time,
             rainfall=rainfall
         )
-    GR4h(Catchment(8/100, 40, 0.1, 1), rain).App()
+    # GR4h(Catchment(8/100, 40, 0.1, 1), rain).App()
+    GR4app(Catchment(8/100, 40, 0.1, 1), rain)
 
 
 if __name__ == "__main__":
