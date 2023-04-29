@@ -219,6 +219,7 @@ class GR4diagram(ModelTemplate.Diagram):
                 time,
                 Qp,
                 lw=1,
+                ls='-.',
                 color=c4,
                 label="Runoff discharge"
             )
@@ -226,6 +227,7 @@ class GR4diagram(ModelTemplate.Diagram):
                 time,
                 Qv,
                 lw=1,
+                ls='-.',
                 color=c5,
                 label="Sub-surface discharge"
             )
@@ -257,7 +259,7 @@ class GR4diagram(ModelTemplate.Diagram):
             ax2.set_yticklabels(ax2.get_yticklabels(), color=c2)
 
             ax3 = ax2.twinx()
-            lineT, = ax3.plot(time, dT, "-.",
+            lineT, = ax3.plot(time, dT, ":",
                               color=c3, label="Water flow", lw=1.5)
             ax3.set_ylabel("$\\dot{T}$ (mm/h)", color=c3)
             ax3.set_xlabel("$t$ (h)")
@@ -300,10 +302,10 @@ class GR4diagram(ModelTemplate.Diagram):
         rain, discharge, _, _, water_flow = self.lines
         ax1, ax2, ax3 = self.axes
 
-        t, Q = discharge.get_paths()[0].vertices.T
+        t, Q = discharge.get_data()
         Qm = Q.max()
-        Imax = max([b.get_height() for b in rain])
-        _, dT = water_flow.get_data()
+        Imax = rain.get_data()[1].max()
+        dT = water_flow.get_data()[1]
         dTm = dT.max()
 
         ax1.set_yscale("linear")
