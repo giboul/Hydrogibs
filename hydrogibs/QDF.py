@@ -1,8 +1,7 @@
 import numpy as np
 from hydrogibs.misc import Turraza
-from typing import Literal
 from matplotlib import pyplot as plt
-from ModelApp import ModelApp, Entry
+from hydrogibs.ModelApp import ModelApp, Entry
 
 
 class Catchment:

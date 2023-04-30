@@ -7,7 +7,7 @@ from matplotlib.backend_bases import key_press_handler
 from matplotlib.pyplot import close
 import customtkinter as ctk
 
-from ModelTemplate import Catchment, Rain
+from hydrogibs.ModelTemplate import Catchment, Rain
 
 
 class Entry:

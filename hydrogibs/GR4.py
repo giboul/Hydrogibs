@@ -1,8 +1,8 @@
 import numpy as np
 from matplotlib import pyplot as plt
 from typing import Callable, Literal
-from ModelApp import ModelApp, Entry
-import ModelTemplate as ModelTemplate
+from hydrogibs.ModelApp import ModelApp, Entry
+import hydrogibs.ModelTemplate as ModelTemplate
 
 
 def _transfer_func(X4: float, num: int) -> np.ndarray:  # m/km/s
