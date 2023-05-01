@@ -4,3 +4,4 @@ hydrogibs.egg-info/
 hydrogibs/__pycache__/
 pyproject.toml
 test.*
+Civil-*
