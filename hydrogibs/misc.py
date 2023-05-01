@@ -155,7 +155,7 @@ def crupedix(S: float, Pj10: float, R: float = 1.0):
         Q10 (float): peak discharge flow for return period T = 10 years
     """
     if not 1.4 <= S <= 52*1000:
-        warn(f"\ncrupedix: Catchment area is not within recommended range: "
+        warn(f"\ncrupedix: Catchment area is not within recommended range:\n\t"
              f"{S:.3e} not in [1,4 * 10^3 km^2 - 52 * 10^3 km^2]")
     return R * S**0.8 * (Pj10/80)**2
 
