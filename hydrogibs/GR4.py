@@ -248,7 +248,7 @@ class GR4diagram(ModelTemplate.Diagram):
             lineP, = ax2.step(
                 time,
                 rain,
-                alpha=0.5,
+                lw=1.5,
                 color=c2,
                 label="Rainfall"
             )
@@ -401,3 +401,23 @@ def gr4(catchment, rain):
     Qv = S * np.convolve(dTv, q)[:time.size] * dt
 
     return Event(time, dP, V, dTp+dTv, Qp, Qv, Qp+Qv)
+
+
+def GR4_demo(kind: Literal["array", "block"] = "array"):
+
+    if kind == "block":
+        rain = BlockRain(50, duration=1.8)
+    else:
+        time = np.linspace(0, 10, 1000)
+        rainfall = np.full_like(time, 50)
+        rainfall[(3 <= time) & (time <= 7) | (time >= 9)] = 0
+        rain = Rain(
+            time=time,
+            rainfall=rainfall
+        )
+    # GR4h(Catchment(8/100, 40, 0.1, 1), rain).App()
+    GR4app(Catchment(8/100, 40, 0.1, 1), rain)
+
+
+if __name__ == "__main__":
+    GR4_demo("block")

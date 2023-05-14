@@ -1,8 +1,10 @@
 import numpy as np
-from typing import Union
 from hydrogibs.misc import Turraza
+from typing import Literal, Union
 from matplotlib import pyplot as plt
 from hydrogibs.ModelApp import ModelApp, Entry
+from warnings import warn
+from scipy.optimize import fsolve
 
 
 class Catchment:
@@ -25,7 +27,7 @@ class Catchment:
         mean_slope        (float) [km^2]: Catchment surface
     """
 
-    _coefs_peak = dict(
+    _coefs_threshold = dict(
 
         soyans=dict(
             A=(2.57, 4.86, 0),
@@ -62,11 +64,13 @@ class Catchment:
     )
 
     def __init__(self,
+                 model: Literal["soyans", "florac", "vandenesse"],
                  specific_duration: float = None,
                  surface: float = None,
                  length: float = None,
                  mean_slope: float = None) -> None:
 
+        self.model = model
         if specific_duration is not None:
             self.specific_duration = specific_duration
         else:
@@ -99,29 +103,49 @@ class Rain:
                  duration: Union[float, np.ndarray],
                  return_period: float,
                  specific_discharge: float,
-                 discharge_Q10: float):
+                 discharge_Q10: float,
+                 dt: float = None,
+                 tf: float = None):
 
         self.duration = np.asarray(duration)
         self.return_period = return_period
         self.specific_discharge = specific_discharge
         self.discharge_Q10 = discharge_Q10
+        if dt is None:
+            d = (
+                duration
+                if isinstance(duration, float | int)
+                else max(duration)
+            )
+            dt = d/100
+        self.dt = dt
+        if tf is None:
+            d = (
+                duration
+                if isinstance(duration, float | int)
+                else max(duration)
+            )
+            tf = 5 * d
+        self.tf = tf
 
-        assert 0 <= duration.all()
+        if isinstance(duration, float | int):
+            assert 0 <= duration
+        else:
+            assert 0 <= duration.all()
         assert 0 <= return_period
         assert 0 <= specific_discharge
         assert 0 <= discharge_Q10
 
     def __matmul__(self, catchment):
-        return qdf_all(catchment=catchment, rain=self)
+        return qdf(catchment=catchment, rain=self)
 
 
 class Event:
 
-    def __init__(self, duration, discharge_mean, discharge_peak) -> None:
+    def __init__(self, duration, discharge) -> None:
 
         self.duration = duration
-        self.discharge_mean = discharge_mean
-        self.discharge_peak = discharge_peak
+        self.discharge = discharge
 
     def diagram(self, *args, **kwargs):
         return QDFdiagram(self, *args, **kwargs)
@@ -137,82 +161,42 @@ class QDFdiagram:
                          "indigo",
                          "tomato",
                          "green"),
-                 flows_margin=0.3,
-                 rain_margin=7,
+                 margin=0.1,
                  show=True) -> None:
 
         self.event = event
         self.colors = colors
-        self.flows_margin = flows_margin
-        self.rain_margin = rain_margin
+        self.margin = margin
 
         duration = event.duration
-        discharge_mean = event.discharge_mean
-        discharge_peak = event.discharge_peak
+        discharge = event.discharge
 
-        if style not in plt.style.available:
-            raise Warning(
-                f"{style} is not in avalable styles: {plt.style.available}"
-            )
         with plt.style.context(style):
 
             c1, c2, c3, c4, c5 = self.colors
             fig, ax = plt.subplots(figsize=(5, 3))
-
-            self.lines_mean = []
-            self.lines_peak = []
-
-            for k, v in discharge_mean.items():
-                line_mean, = ax.plot(duration,
-                                     v,
-                                     ls='-.',
-                                     c=c1,
-                                     label=k)
-                self.lines_mean.append(line_mean)
-
-            for k, v in discharge_peak.items():
-                line_peak, = ax.plot(duration,
-                                     v,
-                                     ls='-',
-                                     c=c2,
-                                     label=k)
-                self.lines_peak.append(line_peak)
+            self.line, = ax.plot(duration, discharge, c=c1)
 
             ax.set_xlabel("Duration [h]")
             ax.set_ylabel("Discharge [m$^3$/s]")
 
-            ax.legend(ncols=2, title=f"mean (-.){' '*10}peak (-)")
             self.axes = (ax, )
             self.figure = fig
-            plt.tight_layout()
             if show:
                 plt.show()
 
     def update(self, event: Event):
 
-        for (k, v), l in zip(
-            event.discharge_mean.items(),
-            self.lines_mean,
-        ):
-            l.set_data(event.duration, v)
-
-        for (k, v), l in zip(
-            event.discharge_peak.items(),
-            self.lines_peak
-        ):
-            l.set_data(event.duration, v)
+        self.line.set_data(event.duration, event.discharge)
 
     def zoom(self, canvas):
 
         ax = self.axes[0]
-        lines = [v.get_data() for v in ax.get_lines()]
-        mean = [v[1].min() for v in lines[:3]]
-        peak = [v[1].max() for v in lines[3:]]
-        mn = min(min(mean, peak))
-        mx = max(max(mean, peak))
-        mean, diff = (mn+mx)/2, (mx-mn)*0.55
-        if mn != mx:
-            ax.set_ylim(mean-diff, mean+diff)
+        ax.set_yscale("linear")
+        t, Q = self.line.get_data()
+        ylim = Q.max() * (1 + self.margin)
+        ax.set_ylim((0, ylim if ylim else 1))
+        ax.set_xlim((0, t.max()))
         canvas.draw()
 
 
@@ -240,7 +224,8 @@ def QDFapp(catchment: Catchment = None,
     entries += [
         ("rain", "return_period", "y", "T"),
         ("rain", "specific_discharge", "m3/s", "Qs"),
-        ("rain", "discharge_Q10", "m3/s", "Q10")
+        ("rain", "discharge_Q10", "m3/s", "Q10"),
+        ("rain", "tf", "h")
     ]
     entries = map(lambda e: Entry(*e), entries)
     ModelApp(
@@ -250,25 +235,15 @@ def QDFapp(catchment: Catchment = None,
     )
 
 
-def qdf_all(catchment, rain):
+def qdf(catchment, rain):
 
-    discharge_mean = dict()
-    discharge_peak = dict()
-    for model in catchment._coefs_mean.keys():
-        constants_mean = list(catchment._coefs_mean[model].values())
-        constants_peak = list(catchment._coefs_peak[model].values())
-        discharge_mean[model] = qdf(catchment, rain, constants_mean)
-        discharge_peak[model] = qdf(catchment, rain, constants_peak)
+    constants_threshold = list(
+        catchment._coefs_threshold[catchment.model].values()
+    )
+    constants_mean = list(
+        catchment._coefs_mean[catchment.model].values()
+    )
 
-    return Event(rain.duration, discharge_mean, discharge_peak)
-
-
-def qdf(catchment, rain, constants):
-
-    if constants is None:
-        constants = list(catchment._coefs_peak[catchment.model].values())
-
-    d = rain.duration
     if hasattr(catchment, "specific_duration"):
         ds = catchment.specific_duration
     else:
@@ -278,22 +253,65 @@ def qdf(catchment, rain, constants):
             catchment.mean_slope
         )
 
-    coefs = np.array([1/(a1*d/ds + a2) + a3
-                      for a1, a2, a3 in constants])
+    discharge_mean = discharge(Q10=rain.discharge_Q10,
+                               Qsp=rain.specific_discharge,
+                               T=rain.return_period,
+                               constants=constants_mean,
+                               d=rain.duration,
+                               ds=ds)
 
-    T = rain.return_period
-    A, B, C = coefs
+    time = np.arange(0, 5*rain.duration, step=rain.dt)
+    Q = np.full_like(time, discharge_mean)
 
+    ds = catchment.specific_duration
+    i = time <= ds
+    Q[i] = discharge_mean * time[i] / ds
+
+    def discharge_diff(d):
+        return discharge(Q10=rain.discharge_Q10,
+                         Qsp=rain.specific_discharge,
+                         T=rain.return_period,
+                         constants=constants_mean,
+                         d=d + ds,
+                         ds=ds) - discharge_mean * (t - d)/ds
+
+    for i, t in enumerate(time[~i][:-1], start=i.sum()):
+        d = fsolve(discharge_diff, x0=t)[0]
+        print(f"{d = }")
+        q = discharge_mean * (t - d)/ds
+        Q[i + 1] = q
+
+    event = Event(time, Q)
+
+    return event
+
+
+def calc_coefs(constants, d, ds):
+    return np.array([1/(a1*d/ds + a2) + a3
+                     for a1, a2, a3 in constants])
+
+
+def discharge(Q10, Qsp, T, constants, d, ds):
+    A, B, C = calc_coefs(constants, d, ds)
     if 0.5 <= T <= 20:
-        discharge = rain.specific_discharge * (A * np.log(T) + B)
+        Q = A * np.log(T) + B
     elif T <= 1000:
-        discharge = (
-            rain.discharge_Q10 +
-            rain.specific_discharge * C * np.log(1 + A * (T-10)/(10*C))
-        )
+        Q = C * np.log(1 + A * (T-10)/(10*C))
     else:
-        raise ValueError(
+        warn(
             f"{T = :.0f} is not within [0.5:1000] years"
         )
+    return Q10 + Qsp * Q
 
-    return discharge
+
+def main():
+
+    QDFapp(catchment=Catchment(model="soyans",
+                               specific_duration=1,
+                               surface=1.8,
+                               length=2,
+                               mean_slope=9.83/100))
+
+
+if __name__ == "__main__":
+    main()
