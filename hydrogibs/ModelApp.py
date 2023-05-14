@@ -162,7 +162,7 @@ class ModelApp:
         elif object == "rain":
             setattr(self.rain, key, value)
         else:
-            raise KeyError(f"{key} not an attribute")
+            raise KeyError(f"{key} not an attribute ('catchment' or 'rain')")
 
     def update(self):
 
