@@ -1,4 +1,5 @@
 import numpy as np
+from typing import Union
 from hydrogibs.misc import Turraza
 from matplotlib import pyplot as plt
 from hydrogibs.ModelApp import ModelApp, Entry
@@ -95,7 +96,7 @@ class Rain:
     """
 
     def __init__(self,
-                 duration: float | np.ndarray,
+                 duration: Union[float, np.ndarray],
                  return_period: float,
                  specific_discharge: float,
                  discharge_Q10: float):
@@ -149,6 +150,10 @@ class QDFdiagram:
         discharge_mean = event.discharge_mean
         discharge_peak = event.discharge_peak
 
+        if style not in plt.style.available:
+            raise Warning(
+                f"{style} is not in avalable styles: {plt.style.available}"
+            )
         with plt.style.context(style):
 
             c1, c2, c3, c4, c5 = self.colors
@@ -292,14 +297,3 @@ def qdf(catchment, rain, constants):
         )
 
     return discharge
-
-
-def main():
-
-    QDFapp(catchment=Catchment(surface=1.8,
-                               length=2,
-                               mean_slope=9.83/100))
-
-
-if __name__ == "__main__":
-    main()
