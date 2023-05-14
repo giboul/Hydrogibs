@@ -174,10 +174,10 @@ class QDFdiagram:
         canvas.draw()
 
 
-def QDFapp(catchment: Catchment = None,
-           rain: Rain = None,
-           style: str = "seaborn",
-           *args, **kwargs):
+def App(catchment: Catchment = None,
+        rain: Rain = None,
+        style: str = "seaborn",
+        *args, **kwargs):
     if catchment is None:
         catchment = Catchment("soyans",
                               specific_duration=1,
@@ -285,11 +285,11 @@ def discharge(Q10, Qsp, T, constants, d, ds):
 
 def main():
 
-    QDFapp(catchment=Catchment(model="soyans",
-                               specific_duration=1,
-                               surface=1.8,
-                               length=2,
-                               mean_slope=9.83/100))
+    App(catchment=Catchment(model="soyans",
+                            specific_duration=1,
+                            surface=1.8,
+                            length=2,
+                            mean_slope=9.83/100))
 
 
 if __name__ == "__main__":

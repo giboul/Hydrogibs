@@ -332,9 +332,9 @@ class GR4diagram(ModelTemplate.Diagram):
         canvas.draw()
 
 
-def GR4app(catchment: Catchment = None,
-           rain: Rain = None,
-           *args, **kwargs):
+def App(catchment: Catchment = None,
+        rain: Rain = None,
+        *args, **kwargs):
     if catchment is None:
         catchment = Catchment(8/100, 40, 0.1, 1)
     if rain is None:
@@ -416,7 +416,7 @@ def GR4_demo(kind: Literal["array", "block"] = "array"):
             rainfall=rainfall
         )
     # GR4h(Catchment(8/100, 40, 0.1, 1), rain).App()
-    GR4app(Catchment(8/100, 40, 0.1, 1), rain)
+    App(Catchment(8/100, 40, 0.1, 1), rain)
 
 
 if __name__ == "__main__":
