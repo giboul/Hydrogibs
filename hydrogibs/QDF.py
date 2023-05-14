@@ -4,7 +4,7 @@ from typing import Literal, Union
 from matplotlib import pyplot as plt
 from hydrogibs.ModelApp import ModelApp, Entry
 from warnings import warn
-from scipy.optimize import fsolve
+from scipy.optimize import least_squares
 
 
 class Catchment:
@@ -70,7 +70,7 @@ class Catchment:
                  length: float = None,
                  mean_slope: float = None) -> None:
 
-        self.model = model
+        self.model = model.lower()
         if specific_duration is not None:
             self.specific_duration = specific_duration
         else:
@@ -105,33 +105,17 @@ class Rain:
                  specific_discharge: float,
                  discharge_Q10: float,
                  dt: float = None,
-                 tf: float = None):
+                 observation_time: float = None):
 
-        self.duration = np.asarray(duration)
+        self.duration = duration
         self.return_period = return_period
         self.specific_discharge = specific_discharge
         self.discharge_Q10 = discharge_Q10
-        if dt is None:
-            d = (
-                duration
-                if isinstance(duration, float | int)
-                else max(duration)
-            )
-            dt = d/100
-        self.dt = dt
-        if tf is None:
-            d = (
-                duration
-                if isinstance(duration, float | int)
-                else max(duration)
-            )
-            tf = 5 * d
-        self.tf = tf
 
-        if isinstance(duration, float | int):
-            assert 0 <= duration
-        else:
-            assert 0 <= duration.all()
+        self.dt = dt if dt is not None else duration/100
+        self.tf = (observation_time if observation_time is not None
+                   else 5 * duration)
+
         assert 0 <= return_period
         assert 0 <= specific_discharge
         assert 0 <= discharge_Q10
@@ -142,9 +126,9 @@ class Rain:
 
 class Event:
 
-    def __init__(self, duration, discharge) -> None:
+    def __init__(self, time, discharge) -> None:
 
-        self.duration = duration
+        self.time = time
         self.discharge = discharge
 
     def diagram(self, *args, **kwargs):
@@ -156,38 +140,28 @@ class QDFdiagram:
     def __init__(self,
                  event: Event,
                  style: str = "ggplot",
-                 colors=("teal",
-                         "k",
-                         "indigo",
-                         "tomato",
-                         "green"),
                  margin=0.1,
                  show=True) -> None:
 
         self.event = event
-        self.colors = colors
         self.margin = margin
-
-        duration = event.duration
-        discharge = event.discharge
 
         with plt.style.context(style):
 
-            c1, c2, c3, c4, c5 = self.colors
             fig, ax = plt.subplots(figsize=(5, 3))
-            self.line, = ax.plot(duration, discharge, c=c1)
-
-            ax.set_xlabel("Duration [h]")
+            self.line, = ax.plot(event.time, event.discharge)
+            ax.set_xlabel("Time [h]")
             ax.set_ylabel("Discharge [m$^3$/s]")
 
             self.axes = (ax, )
             self.figure = fig
+            plt.tight_layout()
             if show:
                 plt.show()
 
     def update(self, event: Event):
 
-        self.line.set_data(event.duration, event.discharge)
+        self.line.set_data(event.time, event.discharge)
 
     def zoom(self, canvas):
 
@@ -253,37 +227,43 @@ def qdf(catchment, rain):
             catchment.mean_slope
         )
 
-    discharge_mean = discharge(Q10=rain.discharge_Q10,
+    discharge_peak = discharge(Q10=rain.discharge_Q10,
                                Qsp=rain.specific_discharge,
                                T=rain.return_period,
                                constants=constants_mean,
                                d=rain.duration,
                                ds=ds)
 
-    time = np.arange(0, 5*rain.duration, step=rain.dt)
-    Q = np.full_like(time, discharge_mean)
+    dt = rain.dt
+    time = np.arange(0, rain.tf, step=rain.dt)
+    Q = np.full_like(time, discharge_peak)
 
     ds = catchment.specific_duration
     i = time <= ds
-    Q[i] = discharge_mean * time[i] / ds
+    Q[i] = discharge_peak * time[i] / ds
 
-    def discharge_diff(d):
-        return discharge(Q10=rain.discharge_Q10,
-                         Qsp=rain.specific_discharge,
-                         T=rain.return_period,
-                         constants=constants_mean,
-                         d=d + ds,
-                         ds=ds) - discharge_mean * (t - d)/ds
+    min_d = 0
+    for i, t in enumerate(time[~i], start=i.sum()):
 
-    for i, t in enumerate(time[~i][:-1], start=i.sum()):
-        d = fsolve(discharge_diff, x0=t)[0]
-        print(f"{d = }")
-        q = discharge_mean * (t - d)/ds
-        Q[i + 1] = q
+        result = least_squares(
+            lambda d: discharge(Q10=rain.discharge_Q10,
+                                Qsp=rain.specific_discharge,
+                                T=rain.return_period,
+                                constants=constants_threshold,
+                                d=d,
+                                ds=ds) - discharge_peak * (t - d)/ds,
+            x0=min_d,
+            bounds=(0, t)
+        )
 
-    event = Event(time, Q)
+        d = float(result.x[0])
+        q = discharge_peak * (t - d)/ds
 
-    return event
+        print(f"{d = :.3f} {t-d=:.2f}  {q = :.3f}  {discharge_peak = :.3f}")
+        Q[i] = q
+        min_d = d + dt
+
+    return Event(time, Q)
 
 
 def calc_coefs(constants, d, ds):
