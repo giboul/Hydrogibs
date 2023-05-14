@@ -196,7 +196,7 @@ class GR4diagram(ModelTemplate.Diagram):
 
         time = event.time
         rain = event.rainfall
-        dT = event.water_flow
+        V = event.volume
         Qp = event.discharge_rain
         Qv = event.discharge_volume
         Q = event.discharge
@@ -259,11 +259,11 @@ class GR4diagram(ModelTemplate.Diagram):
             ax2.set_yticklabels(ax2.get_yticklabels(), color=c2)
 
             ax3 = ax2.twinx()
-            lineT, = ax3.plot(time, dT, ":",
-                              color=c3, label="Water flow", lw=1.5)
-            ax3.set_ylabel("$\\dot{T}$ (mm/h)", color=c3)
+            lineV, = ax3.plot(time, V, ":",
+                              color=c3, label="Storage volume", lw=1.5)
+            ax3.set_ylabel("$V$ (mm)", color=c3)
             ax3.set_xlabel("$t$ (h)")
-            ax3.set_ylim((0, (1 + self.flows_margin) * dT.max()))
+            ax3.set_ylim((0, (1 + self.flows_margin) * V.max()))
             yticks = ax3.get_yticks()
             yticks = [
                 y for y in yticks
@@ -274,7 +274,7 @@ class GR4diagram(ModelTemplate.Diagram):
             ax3.set_yscale("linear")
             ax3.grid(False)
 
-            lines = (lineP, lineQ, lineQp, lineQv, lineT)
+            lines = (lineP, lineQ, lineQp, lineQv, lineV)
             labs = [line.get_label() for line in lines]
             ax1.legend(lines, labs)
 
@@ -289,24 +289,24 @@ class GR4diagram(ModelTemplate.Diagram):
 
         time = event.time
         rainfall = event.rainfall
-        rain, discharge, discharge_p, discharge_v, water_flow = self.lines
+        rain, discharge, discharge_p, discharge_v, storage_vol = self.lines
 
         discharge.set_data(time, event.discharge)
         discharge_p.set_data(time, event.discharge_rain)
         discharge_v.set_data(time, event.discharge_volume)
-        water_flow.set_data(time, event.water_flow)
+        storage_vol.set_data(time, event.volume)
         rain.set_data(time, rainfall)
 
     def zoom(self, canvas):
 
-        rain, discharge, _, _, water_flow = self.lines
+        rain, discharge, _, _, storage_vol = self.lines
         ax1, ax2, ax3 = self.axes
 
         t, Q = discharge.get_data()
         Qm = Q.max()
         Imax = rain.get_data()[1].max()
-        dT = water_flow.get_data()[1]
-        dTm = dT.max()
+        V = storage_vol.get_data()[1]
+        Vm = V.max()
 
         ax1.set_yscale("linear")
         ylim = Qm * (1 + self.flows_margin)
@@ -325,7 +325,7 @@ class GR4diagram(ModelTemplate.Diagram):
         ax2.set_yticks((0, Imax))
 
         ax3.set_yscale("linear")
-        ylim = dTm * (1 + self.flows_margin)
+        ylim = Vm * (1 + self.flows_margin)
         ax3.set_ylim((0, ylim if ylim else 1))
 
         plt.tight_layout()
