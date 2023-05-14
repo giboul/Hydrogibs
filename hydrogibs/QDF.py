@@ -259,7 +259,6 @@ def qdf(catchment, rain):
         d = float(result.x[0])
         q = discharge_peak * (t - d)/ds
 
-        print(f"{d = :.3f} {t-d=:.2f}  {q = :.3f}  {discharge_peak = :.3f}")
         Q[i] = q
         min_d = d + dt
 
