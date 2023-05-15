@@ -205,7 +205,7 @@ class GR4diagram(ModelTemplate.Diagram):
 
             c1, c2, c3, c4, c5 = self.colors
 
-            fig, ax1 = plt.subplots(figsize=(7, 3.5), dpi=100)
+            fig, ax1 = plt.subplots(figsize=(6, 3.5), dpi=100)
             ax1.set_title("Runoff response to rainfall")
 
             lineQ, = ax1.plot(
@@ -213,7 +213,8 @@ class GR4diagram(ModelTemplate.Diagram):
                 Q,
                 lw=2,
                 color=c1,
-                label="total discharge"
+                label="total discharge",
+                zorder=10
             )
             lineQp, = ax1.plot(
                 time,
@@ -221,7 +222,8 @@ class GR4diagram(ModelTemplate.Diagram):
                 lw=1,
                 ls='-.',
                 color=c4,
-                label="Runoff discharge"
+                label="Runoff discharge",
+                zorder=9
             )
             lineQv, = ax1.plot(
                 time,
@@ -229,12 +231,15 @@ class GR4diagram(ModelTemplate.Diagram):
                 lw=1,
                 ls='-.',
                 color=c5,
-                label="Sub-surface discharge"
+                label="Sub-surface discharge",
+                zorder=9
             )
             ax1.set_ylabel("$Q$ (m³/s)", color=c1)
-            ax1.set_xlabel("Time [h]")
+            ax1.set_xlabel("Time (h)")
             ax1.set_xlim((time.min(), time.max()))
-            ax1.set_ylim((0, (1 + self.flows_margin)*Q.max()))
+            Qmax = Q.max()
+            if Qmax:
+                ax1.set_ylim((0, (1 + self.flows_margin)*Qmax))
             ax1.set_yscale("linear")
             yticks = ax1.get_yticks()
             yticks = [
@@ -253,17 +258,20 @@ class GR4diagram(ModelTemplate.Diagram):
                 label="Rainfall"
             )
             max_rain = rain.max()
-            ax2.set_ylim(((1 + self.rain_margin) * max_rain, 0))
+            if max_rain:
+                ax2.set_ylim(((1 + self.rain_margin) * max_rain, 0))
             ax2.grid(False)
             ax2.set_yticks((0, max_rain))
             ax2.set_yticklabels(ax2.get_yticklabels(), color=c2)
 
             ax3 = ax2.twinx()
             lineV, = ax3.plot(time, V, ":",
-                              color=c3, label="Storage volume", lw=1.5)
+                              color=c3, label="Storage volume", lw=1)
             ax3.set_ylabel("$V$ (mm)", color=c3)
             ax3.set_xlabel("$t$ (h)")
-            ax3.set_ylim((0, (1 + self.flows_margin) * V.max()))
+            Vmax = V.max()
+            if Vmax:
+                ax3.set_ylim((0, (1 + 2*self.flows_margin) * Vmax))
             yticks = ax3.get_yticks()
             yticks = [
                 y for y in yticks
@@ -325,7 +333,7 @@ class GR4diagram(ModelTemplate.Diagram):
         ax2.set_yticks((0, Imax))
 
         ax3.set_yscale("linear")
-        ylim = Vm * (1 + self.flows_margin)
+        ylim = Vm * (1 + 2*self.flows_margin)
         ax3.set_ylim((0, ylim if ylim else 1))
 
         plt.tight_layout()
