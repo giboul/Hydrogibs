@@ -196,6 +196,7 @@ def App(catchment: Catchment = None,
             ("catchment", "mean_slope", "%", "im")
         ]
     entries += [
+        ("rain", "duration", "h", "d"),
         ("rain", "return_period", "y", "T"),
         ("rain", "specific_discharge", "m3/s", "Qs"),
         ("rain", "discharge_Q10", "m3/s", "Q10"),
