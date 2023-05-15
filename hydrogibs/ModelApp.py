@@ -74,7 +74,7 @@ class ModelApp:
         diagram = self.event.diagram(*args, **kwargs)
 
         self.canvas = FigureCanvasTkAgg(diagram.figure, master=self.dframe)
-        toolbar = NavigationToolbar2Tk(self.canvas)
+        toolbar = NavigationToolbar2Tk(self.canvas, self.dframe)
         toolbar.update()
         self.canvas._tkcanvas.pack()
         self.canvas.draw()
