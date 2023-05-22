@@ -147,6 +147,22 @@ class Catchment(ModelTemplate.Catchment):
         return rain @ self
 
 
+Catchments = dict(
+    # Group 1
+    Laval=Catchment(57.6/100, 7.8, 2.4/100, 0.38),
+    Erlenbach=Catchment(46.5/100, 13.6, 16.2/100, 0.63),
+    # Group 2
+    Rimbaud=Catchment(35.4/100, 40, 2.28/100, 1.07),
+    Latte=Catchment(14.4/100, 75.4, 3.96/100, 0.78),
+    Sapine=Catchment(15.7/100, 71.1, 0.90/100, 1.03),
+    # Group 3
+    Rietholzbach=Catchment(26.5/100, 17, 2.82/100, 1.11),
+    Lumpenenbach=Catchment(22.6/100, 12.2, 9.6/100, 0.5, 41),
+    Vogelbach=Catchment(31.4/100, 11.5, 5.88/100, 0.64, 56),
+    Brusquet=Catchment(13.8/100, 22.4, 0.72/100, 1.63, 54)
+)
+
+
 class Event(ModelTemplate.Event):
     """
     Stores all relevant results of a GR4h calculation
@@ -206,7 +222,6 @@ class GR4diagram(ModelTemplate.Diagram):
             c1, c2, c3, c4, c5 = self.colors
 
             fig, ax1 = plt.subplots(figsize=(6, 3.5), dpi=100)
-            ax1.set_title("Runoff response to rainfall")
 
             lineQ, = ax1.plot(
                 time,
@@ -246,6 +261,7 @@ class GR4diagram(ModelTemplate.Diagram):
                 y for y in yticks
                 if y < max(yticks)/(self.flows_margin + 1)
             ]
+            yticks = [float(f"{y:.3e}") for y in yticks]
             ax1.set_yticks(yticks)
             ax1.set_yticklabels(yticks, color=c1)
 
@@ -277,6 +293,7 @@ class GR4diagram(ModelTemplate.Diagram):
                 y for y in yticks
                 if y < max(yticks)/(1 + self.flows_margin)
             ]
+            yticks = [float(f"{y:.3e}") for y in yticks]
             ax3.set_yticks(yticks)
             ax3.set_yticklabels(ax3.get_yticks(), color=c3)
             ax3.set_yscale("linear")
