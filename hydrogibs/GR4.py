@@ -120,10 +120,10 @@ class Catchment(ModelTemplate.Catchment):
     """
 
     def __init__(self,
-                 X1: float,
-                 X2: float,
-                 X3: float,
-                 X4: float,
+                 X1: float = 0,
+                 X2: float = 0,
+                 X3: float = 0,
+                 X4: float = 0,
                  surface: float = 1,
                  initial_volume: float = 0,
                  transfer_function: Callable = None) -> None:
@@ -137,6 +137,7 @@ class Catchment(ModelTemplate.Catchment):
         self.X2 = X2
         self.X3 = X3
         self.X4 = X4
+
         self.surface = surface
         self.transfer_function = (transfer_function
                                   if transfer_function is not None
@@ -147,19 +148,77 @@ class Catchment(ModelTemplate.Catchment):
         return rain @ self
 
 
-Catchments = dict(
-    # Group 1
-    Laval=Catchment(57.6/100, 7.8, 2.4/100, 0.38),
-    Erlenbach=Catchment(46.5/100, 13.6, 16.2/100, 0.63),
-    # Group 2
-    Rimbaud=Catchment(35.4/100, 40, 2.28/100, 1.07),
-    Latte=Catchment(14.4/100, 75.4, 3.96/100, 0.78),
-    Sapine=Catchment(15.7/100, 71.1, 0.90/100, 1.03),
-    # Group 3
-    Rietholzbach=Catchment(26.5/100, 17, 2.82/100, 1.11),
-    Lumpenenbach=Catchment(22.6/100, 12.2, 9.6/100, 0.5, 41),
-    Vogelbach=Catchment(31.4/100, 11.5, 5.88/100, 0.64, 56),
-    Brusquet=Catchment(13.8/100, 22.4, 0.72/100, 1.63, 54)
+class Laval(Catchment):
+
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(57.6/100, 7.8, 2.4/100, 0.38,
+                         *args, **kwargs)
+
+
+class Erlenbach(Catchment):
+
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(46.5/100, 13.6, 16.2/100, 0.63,
+                         *args, **kwargs)
+
+
+class Rimbaud(Catchment):
+
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(35.4/100, 40, 2.28/100, 1.07,
+                         *args, **kwargs)
+
+
+class Latte(Catchment):
+
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(14.4/100, 75.4, 3.96/100, 0.78,
+                         *args, **kwargs)
+
+
+class Sapine(Catchment):
+
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(15.7/100, 71.1, 0.90/100, 1.03,
+                         *args, **kwargs)
+
+
+class Rietholzbach(Catchment):
+
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(26.5/100, 17, 2.82/100, 1.11,
+                         *args, **kwargs)
+
+
+class Lumpenenbach(Catchment):
+
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(22.6/100, 12.2, 9.6/100, 0.5,
+                         *args, **kwargs)
+
+
+class Vogelbach(Catchment):
+
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(31.4/100, 11.5, 5.88/100, 0.64,
+                         *args, **kwargs)
+
+
+class Brusquet(Catchment):
+
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(13.8/100, 22.4, 0.72/100, 1.63,
+                         *args, **kwargs)
+
+
+presets = (
+    Laval, Erlenbach, Rimbaud,
+    Latte,
+    Sapine,
+    Rietholzbach,
+    Lumpenenbach,
+    Vogelbach,
+    Brusquet
 )
 
 
@@ -204,6 +263,7 @@ class GR4diagram(ModelTemplate.Diagram):
                          "green"),
                  flows_margin=0.3,
                  rain_margin=7,
+                 figsize=(6, 3.5),
                  show=True) -> None:
 
         self.colors = colors
@@ -221,14 +281,14 @@ class GR4diagram(ModelTemplate.Diagram):
 
             c1, c2, c3, c4, c5 = self.colors
 
-            fig, ax1 = plt.subplots(figsize=(6, 3.5), dpi=100)
+            fig, ax1 = plt.subplots(figsize=figsize, dpi=100)
 
             lineQ, = ax1.plot(
                 time,
                 Q,
                 lw=2,
                 color=c1,
-                label="total discharge",
+                label="Discharge",
                 zorder=10
             )
             lineQp, = ax1.plot(
@@ -237,7 +297,7 @@ class GR4diagram(ModelTemplate.Diagram):
                 lw=1,
                 ls='-.',
                 color=c4,
-                label="Runoff discharge",
+                label="Surface runoff",
                 zorder=9
             )
             lineQv, = ax1.plot(
@@ -246,11 +306,11 @@ class GR4diagram(ModelTemplate.Diagram):
                 lw=1,
                 ls='-.',
                 color=c5,
-                label="Sub-surface discharge",
+                label="Sub-surface runoff",
                 zorder=9
             )
-            ax1.set_ylabel("$Q$ (m³/s)", color=c1)
-            ax1.set_xlabel("Time (h)")
+            ax1.set_ylabel("$Q$ (m$^3$/s)", color=c1)
+            ax1.set_xlabel("t (h)")
             ax1.set_xlim((time.min(), time.max()))
             Qmax = Q.max()
             if Qmax:
@@ -282,9 +342,8 @@ class GR4diagram(ModelTemplate.Diagram):
 
             ax3 = ax2.twinx()
             lineV, = ax3.plot(time, V, ":",
-                              color=c3, label="Storage volume", lw=1)
+                              color=c3, label="Stored volume", lw=1)
             ax3.set_ylabel("$V$ (mm)", color=c3)
-            ax3.set_xlabel("$t$ (h)")
             Vmax = V.max()
             if Vmax:
                 ax3.set_ylim((0, (1 + 2*self.flows_margin) * Vmax))
@@ -301,7 +360,7 @@ class GR4diagram(ModelTemplate.Diagram):
 
             lines = (lineP, lineQ, lineQp, lineQv, lineV)
             labs = [line.get_label() for line in lines]
-            ax1.legend(lines, labs)
+            ax3.legend(lines, labs, loc="upper right")
 
             plt.tight_layout()
 
@@ -422,8 +481,8 @@ def gr4(catchment, rain):
 
     q = catchment.transfer_function(X4, num=(time <= 2*X4).sum())
 
-    Qp = S * np.convolve(dTp, q)[:time.size] * dt
-    Qv = S * np.convolve(dTv, q)[:time.size] * dt
+    Qp = S * np.convolve(dTp, q)[:time.size] * dt / 3.6
+    Qv = S * np.convolve(dTv, q)[:time.size] * dt / 3.6
 
     return Event(time, dP, V, dTp+dTv, Qp, Qv, Qp+Qv)
 
