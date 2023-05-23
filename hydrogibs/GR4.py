@@ -32,8 +32,8 @@ class Rain(ModelTemplate.Rain):
     Rain object to apply to a Catchment object.
 
     Args:
-        - time        (np.ndarray)       [h]
-        - rain_func   (callable)   -> [mm/h]
+        - time        (numpy.ndarray)  [h]
+        - rainfall    (numpy.ndarray) [mm/h]
 
     Creates a GR4h object when called with a Catchment object:
     >>> gr4h = GR4h(catchment, rain)
@@ -121,21 +121,12 @@ class Catchment(ModelTemplate.Catchment):
     """
 
     def __init__(self,
-                 X1: float = 0,
-                 X2: float = 0,
-                 X3: float = 0,
-                 X4: float = 0,
+                 X1: float,
+                 X2: float,
+                 X3: float,
+                 X4: float,
                  surface: float = 1,
                  initial_volume: float = 0,
-                 model: Literal["Laval",
-                                "Erlenbach",
-                                "Rimbaud",
-                                "Latte",
-                                "Sapine",
-                                "Rietholzbach",
-                                "Lumpenenbach",
-                                "Vogelbach",
-                                "Brusquet"] = None,
                  transfer_function: Callable = None) -> None:
 
         assert 0 <= X1 <= 1, "Runoff coefficient must be within [0 : 1]"
@@ -221,14 +212,16 @@ class Brusquet(Catchment):
                          *args, **kwargs)
 
 
-presets = (
-    Laval, Erlenbach, Rimbaud,
-    Latte,
-    Sapine,
-    Rietholzbach,
-    Lumpenenbach,
-    Vogelbach,
-    Brusquet
+presets = dict(
+    Laval=Laval,
+    Erlenbach=Erlenbach,
+    Rimbaud=Rimbaud,
+    Latte=Latte,
+    Sapine=Sapine,
+    Rietholzbach=Rietholzbach,
+    Lumpenenbach=Lumpenenbach,
+    Vogelbach=Vogelbach,
+    Brusquet=Brusquet
 )
 
 
@@ -288,6 +281,11 @@ class GR4diagram(ModelTemplate.Diagram):
         Qv = event.discharge_volume
         Q = event.discharge
 
+        tmax = time.max()
+        Qmax = Q.max()
+        rmax = rain.max()
+        Vmax = V.max()
+
         with plt.style.context(style):
 
             c1, c2, c3, c4, c5 = self.colors
@@ -333,8 +331,8 @@ class GR4diagram(ModelTemplate.Diagram):
             )
             ax1.set_ylabel("$Q$ (m³/s)", color=c1)
             ax1.set_xlabel("Temps (h)")
-            ax1.set_xlim((0, time.max()))
-            ax1.set_ylim((0, Q.max()*1.1))
+            ax1.set_xlim((0, tmax if tmax else 1))
+            ax1.set_ylim((0, Qmax*1.1 if Qmax else 1))
             ax1.tick_params(colors=c1, axis='y')
 
             lineP, = ax2.step(
@@ -344,7 +342,6 @@ class GR4diagram(ModelTemplate.Diagram):
                 color=c2,
                 label="Précipitations"
             )
-            rmax = rain.max()
             ax2.set_ylim((rmax*1.2 if rmax else 1, -rmax/20))
             ax2.set_ylabel("$P$ (mm)")
 
@@ -356,7 +353,7 @@ class GR4diagram(ModelTemplate.Diagram):
                 label="Volume de stockage",
                 lw=1
             )
-            ax3.set_ylim((0, V.max()*1.1))
+            ax3.set_ylim((0, Vmax*1.1 if Vmax else 1))
             ax3.set_ylabel("$V$ (mm)", color=c3)
             ax3.tick_params(colors=c3, axis='y')
             ax3.grid(False)
