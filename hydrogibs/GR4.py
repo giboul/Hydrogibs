@@ -449,7 +449,7 @@ def App(catchment: Catchment = None,
     )
 
 
-def gr4(catchment, rain, volume_check=True):
+def gr4(catchment, rain, volume_check=False):
 
     # Unpack GR4 parameters
     X1 = catchment.X1  # [-]
