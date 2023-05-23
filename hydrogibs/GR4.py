@@ -330,7 +330,7 @@ class GR4diagram(ModelTemplate.Diagram):
                 zorder=9
             )
             ax1.set_ylabel("$Q$ (m³/s)", color=c1)
-            ax1.set_xlabel("Temps (h)")
+            ax1.set_xlabel("t (h)")
             ax1.set_xlim((0, tmax if tmax else 1))
             ax1.set_ylim((0, Qmax*1.1 if Qmax else 1))
             ax1.tick_params(colors=c1, axis='y')
