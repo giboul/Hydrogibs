@@ -334,8 +334,8 @@ class GR4diagram(ModelTemplate.Diagram):
             ax1.set_ylabel("$Q$ (m³/s)", color=c1)
             ax1.set_xlabel("Temps (h)")
             ax1.set_xlim((0, time.max()))
-            ax1.set_ylim((0, Q.max()*1.2))
-            ax1.set_yticklabels(ax1.get_yticklabels(), color=c1)
+            ax1.set_ylim((0, Q.max()*1.1))
+            ax1.tick_params(colors=c1, axis='y')
 
             lineP, = ax2.step(
                 time,
@@ -344,6 +344,8 @@ class GR4diagram(ModelTemplate.Diagram):
                 color=c2,
                 label="Précipitations"
             )
+            rmax = rain.max()
+            ax2.set_ylim((rmax*1.2 if rmax else 1, -rmax/20))
             ax2.set_ylabel("$P$ (mm)")
 
             lineV, = ax3.plot(
@@ -356,7 +358,7 @@ class GR4diagram(ModelTemplate.Diagram):
             )
             ax3.set_ylim((0, V.max()*1.1))
             ax3.set_ylabel("$V$ (mm)", color=c3)
-            ax3.set_yticklabels(ax3.get_yticklabels(), color=c3)
+            ax3.tick_params(colors=c3, axis='y')
             ax3.grid(False)
 
             ax1.spines[['top', 'right']].set_visible(False)
@@ -403,9 +405,12 @@ class GR4diagram(ModelTemplate.Diagram):
         Vmax = storage_vol.get_data()[1].max()
 
         ax1.set_xlim((0, tmax if tmax else 1))
-        ax1.set_ylim((0, Qmax*1.2 if Qmax else 1))
-        ax2.set_ylim((Imax*1.05 if Imax else 1, -Imax/20))
+        ax1.set_ylim((0, Qmax*1.1 if Qmax else 1))
+        ax2.set_ylim((Imax*1.2 if Imax else 1, -Imax/20))
         ax3.set_ylim((0, Vmax*1.1 if Vmax else 1))
+
+        for ax in (ax1, ax2, ax3):
+            ax.relim()
 
         plt.tight_layout()
         canvas.draw()
