@@ -3,9 +3,10 @@ from matplotlib import pyplot as plt
 from typing import Callable, Literal
 from hydrogibs.ModelApp import ModelApp, Entry
 import hydrogibs.ModelTemplate as ModelTemplate
+from warnings import warn
 
 
-def _transfer_func(X4: float, num: int) -> np.ndarray:  # m/km/s
+def _transfer_func(X4: float, num: int) -> np.ndarray:
     """
     This function will make the transition between the
     water flow and the discharge through a convolution
@@ -126,6 +127,15 @@ class Catchment(ModelTemplate.Catchment):
                  X4: float = 0,
                  surface: float = 1,
                  initial_volume: float = 0,
+                 model: Literal["Laval",
+                                "Erlenbach",
+                                "Rimbaud",
+                                "Latte",
+                                "Sapine",
+                                "Rietholzbach",
+                                "Lumpenenbach",
+                                "Vogelbach",
+                                "Brusquet"] = None,
                  transfer_function: Callable = None) -> None:
 
         assert 0 <= X1 <= 1, "Runoff coefficient must be within [0 : 1]"
@@ -264,6 +274,7 @@ class GR4diagram(ModelTemplate.Diagram):
                  flows_margin=0.3,
                  rain_margin=7,
                  figsize=(6, 3.5),
+                 dpi=100,
                  show=True) -> None:
 
         self.colors = colors
@@ -281,14 +292,25 @@ class GR4diagram(ModelTemplate.Diagram):
 
             c1, c2, c3, c4, c5 = self.colors
 
-            fig, ax1 = plt.subplots(figsize=figsize, dpi=100)
+            fig, (ax2, ax1) = plt.subplots(
+                figsize=figsize,
+                nrows=2, gridspec_kw=dict(
+                    hspace=0,
+                    height_ratios=[1, 3]
+                ),
+                dpi=dpi,
+                sharex=True
+            )
+            ax2.invert_yaxis()
+            ax2.xaxis.tick_top()
+            ax3 = ax1.twinx()
 
             lineQ, = ax1.plot(
                 time,
                 Q,
                 lw=2,
                 color=c1,
-                label="Discharge",
+                label="Débit",
                 zorder=10
             )
             lineQp, = ax1.plot(
@@ -297,7 +319,7 @@ class GR4diagram(ModelTemplate.Diagram):
                 lw=1,
                 ls='-.',
                 color=c4,
-                label="Surface runoff",
+                label="Ruissellement",
                 zorder=9
             )
             lineQv, = ax1.plot(
@@ -306,61 +328,49 @@ class GR4diagram(ModelTemplate.Diagram):
                 lw=1,
                 ls='-.',
                 color=c5,
-                label="Sub-surface runoff",
+                label="Écoulements hypodermiques",
                 zorder=9
             )
-            ax1.set_ylabel("$Q$ (m$^3$/s)", color=c1)
-            ax1.set_xlabel("t (h)")
-            ax1.set_xlim((time.min(), time.max()))
-            Qmax = Q.max()
-            if Qmax:
-                ax1.set_ylim((0, (1 + self.flows_margin)*Qmax))
-            ax1.set_yscale("linear")
-            yticks = ax1.get_yticks()
-            yticks = [
-                y for y in yticks
-                if y < max(yticks)/(self.flows_margin + 1)
-            ]
-            yticks = [float(f"{y:.3e}") for y in yticks]
-            ax1.set_yticks(yticks)
-            ax1.set_yticklabels(yticks, color=c1)
+            ax1.set_ylabel("$Q$ (m³/s)", color=c1)
+            ax1.set_xlabel("Temps (h)")
+            ax1.set_xlim((0, time.max()))
+            ax1.set_ylim((0, Q.max()*1.2))
+            ax1.set_yticklabels(ax1.get_yticklabels(), color=c1)
 
-            ax2 = ax1.twinx()
             lineP, = ax2.step(
                 time,
                 rain,
                 lw=1.5,
                 color=c2,
-                label="Rainfall"
+                label="Précipitations"
             )
-            max_rain = rain.max()
-            if max_rain:
-                ax2.set_ylim(((1 + self.rain_margin) * max_rain, 0))
-            ax2.grid(False)
-            ax2.set_yticks((0, max_rain))
-            ax2.set_yticklabels(ax2.get_yticklabels(), color=c2)
+            ax2.set_ylabel("$P$ (mm)")
 
-            ax3 = ax2.twinx()
-            lineV, = ax3.plot(time, V, ":",
-                              color=c3, label="Stored volume", lw=1)
+            lineV, = ax3.plot(
+                time,
+                V,
+                ":",
+                color=c3,
+                label="Volume de stockage",
+                lw=1
+            )
+            ax3.set_ylim((0, V.max()*1.1))
             ax3.set_ylabel("$V$ (mm)", color=c3)
-            Vmax = V.max()
-            if Vmax:
-                ax3.set_ylim((0, (1 + 2*self.flows_margin) * Vmax))
-            yticks = ax3.get_yticks()
-            yticks = [
-                y for y in yticks
-                if y < max(yticks)/(1 + self.flows_margin)
-            ]
-            yticks = [float(f"{y:.3e}") for y in yticks]
-            ax3.set_yticks(yticks)
-            ax3.set_yticklabels(ax3.get_yticks(), color=c3)
-            ax3.set_yscale("linear")
+            ax3.set_yticklabels(ax3.get_yticklabels(), color=c3)
             ax3.grid(False)
+
+            ax1.spines[['top', 'right']].set_visible(False)
+            ax2.spines['bottom'].set_visible(False)
+            ax3.spines[['left', 'bottom', 'top']].set_visible(False)
 
             lines = (lineP, lineQ, lineQp, lineQv, lineV)
             labs = [line.get_label() for line in lines]
-            ax3.legend(lines, labs, loc="upper right")
+            ax3.legend(
+                lines,
+                labs,
+                loc="upper right",
+                frameon=True
+            )
 
             plt.tight_layout()
 
@@ -387,30 +397,15 @@ class GR4diagram(ModelTemplate.Diagram):
         ax1, ax2, ax3 = self.axes
 
         t, Q = discharge.get_data()
-        Qm = Q.max()
+        tmax = t.max()
+        Qmax = Q.max()
         Imax = rain.get_data()[1].max()
-        V = storage_vol.get_data()[1]
-        Vm = V.max()
+        Vmax = storage_vol.get_data()[1].max()
 
-        ax1.set_yscale("linear")
-        ylim = Qm * (1 + self.flows_margin)
-        ax1.set_ylim((0, ylim if ylim else 1))
-        ax1.set_xlim((0, t.max()))
-        yticks = [
-            ytick for ytick in ax1.get_yticks()
-            if ytick <= Qm
-        ]
-        ax1.set_yticks(yticks)
-        ax1.set_yticklabels(yticks)
-
-        ax2.set_yscale("linear")
-        ylim = Imax * (1 + self.rain_margin)
-        ax2.set_ylim((ylim if ylim else 1, 0))
-        ax2.set_yticks((0, Imax))
-
-        ax3.set_yscale("linear")
-        ylim = Vm * (1 + 2*self.flows_margin)
-        ax3.set_ylim((0, ylim if ylim else 1))
+        ax1.set_xlim((0, tmax if tmax else 1))
+        ax1.set_ylim((0, Qmax*1.2 if Qmax else 1))
+        ax2.set_ylim((Imax*1.05 if Imax else 1, -Imax/20))
+        ax3.set_ylim((0, Vmax*1.1 if Vmax else 1))
 
         plt.tight_layout()
         canvas.draw()
@@ -449,40 +444,61 @@ def App(catchment: Catchment = None,
     )
 
 
-def gr4(catchment, rain):
+def gr4(catchment, rain, volume_check=True):
 
-    X1 = catchment.X1
-    X2 = catchment.X2
-    X3 = catchment.X3
-    X4 = catchment.X4
-    S = catchment.surface
-    V0 = catchment.initial_volume
+    # Unpack GR4 parameters
+    X1 = catchment.X1  # [-]
+    X2 = catchment.X2  # mm
+    X3 = catchment.X3  # 1/h
+    X4 = catchment.X4  # h
 
-    time = rain.time
-    dt = rain.timestep
-    dP = rain.rainfall
+    # Other conditions
+    S = catchment.surface  # km²
+    V0 = catchment.initial_volume  # mm
 
-    i = time[np.cumsum(dP)*dt >= X2 - V0]
-    t1 = i[0] if i.size else float("inf")
+    # Rainfall data
+    time = rain.time  # h
+    dt = rain.timestep  # h
+    dP = rain.rainfall  # mm/h
 
+    # integral(rainfall)dt >= initial abstraction
+    abstraction = np.cumsum(dP)*dt < X2
+
+    # Removing the initial abstraction from the rainfall
     dP_effective = dP.copy()
-    dP_effective[time < t1] = 0
+    dP_effective[abstraction] = 0
 
     # solution to the differential equation V' = -X3*V + (1-X1)*P
-    integral = np.cumsum(np.exp(X3*time) * dP_effective) * dt
-    cond_init = V0 * np.exp(-X3*time)
-    V = np.exp(-X3*time) * (1-X1) * integral + cond_init
+    V = np.exp(-X3*time) * (
+        # homogeneous solution
+        (1-X1) * np.cumsum(np.exp(X3*time) * dP_effective) * dt
+        # particular solution / initial condition
+        + V0
+    )
 
-    t_abstraction = time < t1
-    dTp = X1*dP
-    dTv = X3*V
-    dTp[t_abstraction] = 0
-    dTv[t_abstraction] = 0
+    # Water flows
+    dTp = X1*dP  # due to runoff
+    dTv = X3*V  # due to volume emptying
+    dTp[abstraction] = 0
+    dTv[abstraction] = 0
 
+    # transfer function as array
     q = catchment.transfer_function(X4, num=(time <= 2*X4).sum())
 
     Qp = S * np.convolve(dTp, q)[:time.size] * dt / 3.6
     Qv = S * np.convolve(dTv, q)[:time.size] * dt / 3.6
+
+    Vtot = np.trapz(x=time, y=Qp + Qv)*3600
+    Ptot = np.trapz(x=time, y=dP)*S*1000
+    X2v = X2*S*1000 if (~abstraction).any() else Ptot
+    if volume_check:
+        warn(
+            "\n"
+            f"Stored volume: {Vtot + X2v:.2e}\n"
+            f"\tDischarge     volume: {Vtot:.2e}\n"
+            f"\tInitial  abstraction: {X2v:.2e}\n"
+            f"Precipitation volume: {Ptot:.2e}\n\n"
+        )
 
     return Event(time, dP, V, dTp+dTv, Qp, Qv, Qp+Qv)
 
@@ -490,7 +506,7 @@ def gr4(catchment, rain):
 def GR4_demo(kind: Literal["array", "block"] = "array"):
 
     if kind == "block":
-        rain = BlockRain(50, duration=1.8)
+        rain = BlockRain(50, duration=1.8, observation_span=5.8)
     else:
         time = np.linspace(0, 10, 1000)
         rainfall = np.full_like(time, 50)
@@ -499,6 +515,7 @@ def GR4_demo(kind: Literal["array", "block"] = "array"):
             time=time,
             rainfall=rainfall
         )
+    Catchment(8/100, 40, 0.1, 1) @ rain
     # GR4h(Catchment(8/100, 40, 0.1, 1), rain).App()
     App(Catchment(8/100, 40, 0.1, 1), rain)
 
