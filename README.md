@@ -1,6 +1,6 @@
 # hydrogibs
 
-Small hydrology package created for the sake of a class project with Christophe Ancey.
+Small hydrology package created for the sake of a class project with [Christophe Ancey](https://fr.ancey.ch/ "fr.ancey.ch").
 
 The only module that's currently usable is the GR4 model containing:
 
@@ -41,4 +41,4 @@ A block rain (rainfall = intensity if t < duration else 0): `BlockRain(intensity
 
 # Example file
 
-`example.ipynb` might help you get the hang of thispackage
+`example.ipynb` might help you get the hang of this package
