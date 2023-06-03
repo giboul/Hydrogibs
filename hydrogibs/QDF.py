@@ -7,6 +7,28 @@ from warnings import warn
 from scipy.optimize import least_squares
 
 
+def _read_coeficients(kind="mean"):
+
+    with open(f"data/QDFcoefs_{kind}.csv") as file:
+        lines = file.readlines()
+
+    coefs = dict()
+    for line in lines[2:]:
+        name, *values = line.split(',')
+        values = [float(v) for v in values]
+        coefs[name] = dict(
+            A=values[:3],
+            B=values[3:6],
+            C=values[6:]
+        )
+
+    return coefs
+
+
+coefs_mean = _read_coeficients('mean')
+coefs_threshold = _read_coeficients('threshold')
+
+
 class Catchment:
     """
     Stores a QDF catchment's parameters.
@@ -26,42 +48,6 @@ class Catchment:
         length            (float) [%]:    Mean slope of the thalweg
         mean_slope        (float) [km^2]: Catchment surface
     """
-
-    _coefs_threshold = dict(
-
-        soyans=dict(
-            A=(2.57, 4.86, 0),
-            B=(2.10, 2.10, 0.050),
-            C=(1.49, 0.660, 0.017)),
-
-        florac=dict(
-            A=(3.05, 3.53, 0),
-            B=(2.13, 2.96, 0.010),
-            C=(2.78, 1.77, 0.040)),
-
-        vandenesse=dict(
-            A=(3.970, 6.48, 0.010),
-            B=(1.910, 1.910, 0.097),
-            C=(3.674, 1.774, 0.013))
-    )
-
-    _coefs_mean = dict(
-
-        soyans=dict(
-            A=(0.87, 4.60, 0),
-            B=(1.07, 2.50, 0.099),
-            C=(0.569, 0.690, 0.046)),
-
-        florac=dict(
-            A=(1.12, 3.56, 0),
-            B=(0.95, 3.18, 0.039),
-            C=(1.56, 1.91, 0.085)),
-
-        vandenesse=dict(
-            A=(2.635, 6.19, 0.016),
-            B=(1.045, 2.385, 0.172),
-            C=(1.083, 1.75, 0))
-    )
 
     def __init__(self,
                  model: Literal["soyans", "florac", "vandenesse"],
@@ -100,19 +86,18 @@ class Rain:
     """
 
     def __init__(self,
-                 duration: Union[float, np.ndarray],
+                 duration: float,
                  return_period: float,
                  specific_discharge: float,
                  discharge_Q10: float,
-                 dt: float = None,
+                 dt: float = .0,
                  observation_time: float = None):
 
         self.duration = duration
         self.return_period = return_period
         self.specific_discharge = specific_discharge
         self.discharge_Q10 = discharge_Q10
-
-        self.dt = dt if dt is not None else duration/100
+        self.dt = dt if dt else duration/100
         self.tf = (observation_time if observation_time is not None
                    else 5 * duration)
 
@@ -185,7 +170,7 @@ def App(catchment: Catchment = None,
                               length=2,
                               mean_slope=9.83/100)
     if rain is None:
-        rain = Rain(np.linspace(0, 24), 100, 0.3, 0.3)
+        rain = Rain(1, 100, 0.3, 0.3)
 
     if hasattr(catchment, "specific_duration"):
         entries = [("catchment", "specific_duration", "h", "ds")]
@@ -213,10 +198,10 @@ def App(catchment: Catchment = None,
 def qdf(catchment, rain):
 
     constants_threshold = list(
-        catchment._coefs_threshold[catchment.model].values()
+        coefs_threshold[catchment.model.capitalize()].values()
     )
     constants_mean = list(
-        catchment._coefs_mean[catchment.model].values()
+        coefs_mean[catchment.model.capitalize()].values()
     )
 
     if hasattr(catchment, "specific_duration"):

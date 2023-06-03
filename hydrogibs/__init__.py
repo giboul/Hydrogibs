@@ -1,1 +1,3 @@
-from hydrogibs import misc, GR4, QDF, RationalMethod, SoCoSe
+from hydrogibs import GR4, QDF, SoCoSe
+from hydrogibs.RationalMethod import rational_method
+from hydrogibs.misc import *

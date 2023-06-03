@@ -121,13 +121,23 @@ class Catchment(ModelTemplate.Catchment):
     """
 
     def __init__(self,
-                 X1: float,
-                 X2: float,
-                 X3: float,
-                 X4: float,
+                 X1: float = ...,
+                 X2: float = ...,
+                 X3: float = ...,
+                 X4: float = ...,
                  surface: float = 1,
                  initial_volume: float = 0,
                  transfer_function: Callable = None) -> None:
+
+        if isinstance(X1, str):
+            preset = X1
+            if preset in preset_params:
+                X1, X2, X3, X4 = preset_params[preset].values()
+            else:
+                raise KeyError(
+                    f"{preset} does not match an available preset catchment."
+                    f"\nAvailable presets: {set(preset_params.keys())}"
+                )
 
         assert 0 <= X1 <= 1, "Runoff coefficient must be within [0 : 1]"
         assert 0 <= X2, "Initial abstraction must be positive"
@@ -149,80 +159,40 @@ class Catchment(ModelTemplate.Catchment):
         return rain @ self
 
 
-class Laval(Catchment):
+def _read_presets():
 
-    def __init__(self, *args, **kwargs) -> None:
-        super().__init__(57.6/100, 7.8, 2.4/100, 0.38,
-                         *args, **kwargs)
+    presets = dict()
 
+    with open("data/GR4presets.csv") as file:
+        lines = file.readlines()
 
-class Erlenbach(Catchment):
+    for line in lines[2:]:
+        line = line.replace('\n', '')
+        data = [
+            float(d) if d.replace('.', '', 1).isdigit()
+            else d
+            for d in line.split(',')
+        ]
+        name, _, _, x1, x2, x3, x4, _, _ = data
+        presets[name] = dict(X1=x1/100, X2=x2, X3=x3/100, X4=x4)
 
-    def __init__(self, *args, **kwargs) -> None:
-        super().__init__(46.5/100, 13.6, 16.2/100, 0.63,
-                         *args, **kwargs)
-
-
-class Rimbaud(Catchment):
-
-    def __init__(self, *args, **kwargs) -> None:
-        super().__init__(35.4/100, 40, 2.28/100, 1.07,
-                         *args, **kwargs)
-
-
-class Latte(Catchment):
-
-    def __init__(self, *args, **kwargs) -> None:
-        super().__init__(14.4/100, 75.4, 3.96/100, 0.78,
-                         *args, **kwargs)
+    return presets
 
 
-class Sapine(Catchment):
-
-    def __init__(self, *args, **kwargs) -> None:
-        super().__init__(15.7/100, 71.1, 0.90/100, 1.03,
-                         *args, **kwargs)
+preset_params = _read_presets()
 
 
-class Rietholzbach(Catchment):
-
-    def __init__(self, *args, **kwargs) -> None:
-        super().__init__(26.5/100, 17, 2.82/100, 1.11,
-                         *args, **kwargs)
-
-
-class Lumpenenbach(Catchment):
-
-    def __init__(self, *args, **kwargs) -> None:
-        super().__init__(22.6/100, 12.2, 9.6/100, 0.5,
-                         *args, **kwargs)
-
-
-class Vogelbach(Catchment):
-
-    def __init__(self, *args, **kwargs) -> None:
-        super().__init__(31.4/100, 11.5, 5.88/100, 0.64,
-                         *args, **kwargs)
-
-
-class Brusquet(Catchment):
-
-    def __init__(self, *args, **kwargs) -> None:
-        super().__init__(13.8/100, 22.4, 0.72/100, 1.63,
-                         *args, **kwargs)
-
-
-presets = dict(
-    Laval=Laval,
-    Erlenbach=Erlenbach,
-    Rimbaud=Rimbaud,
-    Latte=Latte,
-    Sapine=Sapine,
-    Rietholzbach=Rietholzbach,
-    Lumpenenbach=Lumpenenbach,
-    Vogelbach=Vogelbach,
-    Brusquet=Brusquet
-)
+# preset = dict(
+#     Laval=Laval,
+#     Erlenbach=Erlenbach,
+#     Rimbaud=Rimbaud,
+#     Latte=Latte,
+#     Sapine=Sapine,
+#     Rietholzbach=Rietholzbach,
+#     Lumpenenbach=Lumpenenbach,
+#     Vogelbach=Vogelbach,
+#     Brusquet=Brusquet
+# )
 
 
 class Event(ModelTemplate.Event):
@@ -477,6 +447,7 @@ def gr4(catchment, rain, volume_check=False):
         # particular solution / initial condition
         + V0
     )
+    plt.plot(rain.time, dP_effective)
 
     # Water flows
     dTp = X1*dP  # due to runoff
@@ -505,22 +476,13 @@ def gr4(catchment, rain, volume_check=False):
     return Event(time, dP, V, dTp+dTv, Qp, Qv, Qp+Qv)
 
 
-def GR4_demo(kind: Literal["array", "block"] = "array"):
+def GR4_demo():
 
-    if kind == "block":
-        rain = BlockRain(50, duration=1.8, observation_span=5.8)
-    else:
-        time = np.linspace(0, 10, 1000)
-        rainfall = np.full_like(time, 50)
-        rainfall[(3 <= time) & (time <= 7) | (time >= 9)] = 0
-        rain = Rain(
-            time=time,
-            rainfall=rainfall
-        )
-    Catchment(8/100, 40, 0.1, 1) @ rain
-    # GR4h(Catchment(8/100, 40, 0.1, 1), rain).App()
-    App(Catchment(8/100, 40, 0.1, 1), rain)
+    rain = BlockRain(50, duration=1.8, observation_span=5.8)
+    catchment = Catchment("Rimbaud")
+    # event = catchment @ rain
+    App(catchment, rain)
 
 
 if __name__ == "__main__":
-    GR4_demo("block")
+    GR4_demo()
