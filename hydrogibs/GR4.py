@@ -163,7 +163,7 @@ def _read_presets():
 
     presets = dict()
 
-    with open("data/GR4presets.csv") as file:
+    with open("hydrogibs/data/GR4presets.csv") as file:
         lines = file.readlines()
 
     for line in lines[2:]:

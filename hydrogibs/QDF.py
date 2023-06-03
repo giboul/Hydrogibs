@@ -9,7 +9,7 @@ from scipy.optimize import least_squares
 
 def _read_coeficients(kind="mean"):
 
-    with open(f"data/QDFcoefs_{kind}.csv") as file:
+    with open(f"hydrogibs/data/QDFcoefs_{kind}.csv") as file:
         lines = file.readlines()
 
     coefs = dict()
