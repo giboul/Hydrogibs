@@ -447,7 +447,6 @@ def gr4(catchment, rain, volume_check=False):
         # particular solution / initial condition
         + V0
     )
-    plt.plot(rain.time, dP_effective)
 
     # Water flows
     dTp = X1*dP  # due to runoff
