@@ -5,11 +5,12 @@ from matplotlib import pyplot as plt
 from hydrogibs.ModelApp import ModelApp, Entry
 from warnings import warn
 from scipy.optimize import least_squares
+from os.path import dirname
 
 
 def _read_coeficients(kind="mean"):
 
-    with open(f"hydrogibs/data/QDFcoefs_{kind}.csv") as file:
+    with open(f"{dirname(__file__)}/data/QDFcoefs_{kind}.csv") as file:
         lines = file.readlines()
 
     coefs = dict()

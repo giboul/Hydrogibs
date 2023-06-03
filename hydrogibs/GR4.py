@@ -4,6 +4,7 @@ from typing import Callable, Literal
 from hydrogibs.ModelApp import ModelApp, Entry
 import hydrogibs.ModelTemplate as ModelTemplate
 from warnings import warn
+from os.path import dirname
 
 
 def _transfer_func(X4: float, num: int) -> np.ndarray:
@@ -161,11 +162,10 @@ class Catchment(ModelTemplate.Catchment):
 
 def _read_presets():
 
-    presets = dict()
-
-    with open("hydrogibs/data/GR4presets.csv") as file:
+    with open(f"{dirname(__file__)}/data/GR4presets.csv") as file:
         lines = file.readlines()
 
+    presets = dict()
     for line in lines[2:]:
         line = line.replace('\n', '')
         data = [
