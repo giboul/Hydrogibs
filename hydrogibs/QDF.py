@@ -3,31 +3,9 @@ from hydrogibs.misc import Turraza
 from typing import Literal, Union
 from matplotlib import pyplot as plt
 from hydrogibs.ModelApp import ModelApp, Entry
+from hydrogibs.constants import QDFcoefs_mean, QDFcoefs_threshold
 from warnings import warn
 from scipy.optimize import least_squares
-from os.path import dirname
-
-
-def _read_coeficients(kind="mean"):
-
-    with open(f"{dirname(__file__)}/data/QDFcoefs_{kind}.csv") as file:
-        lines = file.readlines()
-
-    coefs = dict()
-    for line in lines[2:]:
-        name, *values = line.split(',')
-        values = [float(v) for v in values]
-        coefs[name] = dict(
-            A=values[:3],
-            B=values[3:6],
-            C=values[6:]
-        )
-
-    return coefs
-
-
-coefs_mean = _read_coeficients('mean')
-coefs_threshold = _read_coeficients('threshold')
 
 
 class Catchment:
@@ -199,10 +177,10 @@ def App(catchment: Catchment = None,
 def qdf(catchment, rain):
 
     constants_threshold = list(
-        coefs_threshold[catchment.model.capitalize()].values()
+        QDFcoefs_threshold[catchment.model.capitalize()].values()
     )
     constants_mean = list(
-        coefs_mean[catchment.model.capitalize()].values()
+        QDFcoefs_threshold[catchment.model.capitalize()].values()
     )
 
     if hasattr(catchment, "specific_duration"):

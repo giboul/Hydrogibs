@@ -2,9 +2,9 @@ import numpy as np
 from matplotlib import pyplot as plt
 from typing import Callable, Literal
 from hydrogibs.ModelApp import ModelApp, Entry
+from hydrogibs.constants import GR4presets
 import hydrogibs.ModelTemplate as ModelTemplate
 from warnings import warn
-from os.path import dirname
 
 
 def _transfer_func(X4: float, num: int) -> np.ndarray:
@@ -131,13 +131,13 @@ class Catchment(ModelTemplate.Catchment):
                  transfer_function: Callable = None) -> None:
 
         if isinstance(X1, str):
-            preset = X1
-            if preset in preset_params:
-                X1, X2, X3, X4 = preset_params[preset].values()
+            preset = X1.capitalize()
+            if preset in GR4presets:
+                X1, X2, X3, X4 = GR4presets[preset].X
             else:
                 raise KeyError(
                     f"{preset} does not match an available preset catchment."
-                    f"\nAvailable presets: {set(preset_params.keys())}"
+                    f"\nAvailable presets: {set(GR4presets.keys())}"
                 )
 
         assert 0 <= X1 <= 1, "Runoff coefficient must be within [0 : 1]"
@@ -158,41 +158,6 @@ class Catchment(ModelTemplate.Catchment):
 
     def __matmul__(self, rain):
         return rain @ self
-
-
-def _read_presets():
-
-    with open(f"{dirname(__file__)}/data/GR4presets.csv") as file:
-        lines = file.readlines()
-
-    presets = dict()
-    for line in lines[2:]:
-        line = line.replace('\n', '')
-        data = [
-            float(d) if d.replace('.', '', 1).isdigit()
-            else d
-            for d in line.split(',')
-        ]
-        name, _, _, x1, x2, x3, x4, _, _ = data
-        presets[name] = dict(X1=x1/100, X2=x2, X3=x3/100, X4=x4)
-
-    return presets
-
-
-preset_params = _read_presets()
-
-
-# preset = dict(
-#     Laval=Laval,
-#     Erlenbach=Erlenbach,
-#     Rimbaud=Rimbaud,
-#     Latte=Latte,
-#     Sapine=Sapine,
-#     Rietholzbach=Rietholzbach,
-#     Lumpenenbach=Lumpenenbach,
-#     Vogelbach=Vogelbach,
-#     Brusquet=Brusquet
-# )
 
 
 class Event(ModelTemplate.Event):
