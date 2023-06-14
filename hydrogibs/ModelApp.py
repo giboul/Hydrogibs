@@ -1,7 +1,8 @@
+from warnings import warn
 try:
     import customtkinter as ctk
 except ImportError:
-    print(f"Install customtkinter for interactive apps")
+    warn("Install customtkinter for interactive apps")
 from typing import Tuple, Literal
 
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg,\
