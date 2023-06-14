@@ -1,11 +1,13 @@
-import customtkinter as ctk
+try:
+    import customtkinter as ctk
+except ImportError:
+    print(f"Install customtkinter for interactive apps")
 from typing import Tuple, Literal
 
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg,\
     NavigationToolbar2Tk
 from matplotlib.backend_bases import key_press_handler
 from matplotlib.pyplot import close
-import customtkinter as ctk
 
 from hydrogibs.ModelTemplate import Catchment, Rain
 
