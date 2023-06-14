@@ -1,9 +1,10 @@
 import numpy as np
-from scipy.optimize import OptimizeResult, minimize
+from matplotlib import pyplot as plt
+from scipy.optimize import OptimizeResult, minimize, fsolve
 from warnings import warn
 
 
-g = 9.81
+_g = 9.81
 
 
 def montana(
@@ -172,3 +173,69 @@ def zeller(montana_params: tuple,
     if not np.isclose(vtime + rtime, duration, atol=atol):
         warn(f"\nt_v and t_r are not close enough")
     return Q
+
+
+def charge_hydraulique(h, v, z=.0, g=_g):
+    return h + z + v**2/(2*g)
+
+
+def critical_depth(Q, Sfunc, eps=0.1, h0=1, g=_g):
+
+    def deriv(h):
+        return (Sfunc(h+eps) - Sfunc(h-eps)) / (2*eps)
+
+    return float(fsolve(
+        lambda h: Q**2/(g*Sfunc(h)**3) * deriv(h) - 1,
+        x0=h0
+    ))
+
+
+def water_depth_solutions(H, Q, Sfunc, z=0, g=_g,
+                          plot=False, style='seaborn', num=100,
+                          *figargs, **figkwargs):
+
+    hcr = critical_depth(Q, Sfunc)
+
+    def head_diff(h):
+        return np.abs(charge_hydraulique(h, Q/Sfunc(h), z) - H)
+
+    xsub = float(
+        minimize(
+            head_diff,
+            x0=hcr*0.5,
+            bounds=((10**-2, hcr),)
+        ).x
+    )
+    xsup = float(
+        minimize(
+            head_diff,
+            x0=hcr*1.5,
+            bounds=((hcr, None),)
+        ).x
+    )
+
+    if plot:
+        with plt.style.context(style):
+            fig = plt.figure(*figargs, **figkwargs)
+            h = np.linspace(0.1*hcr, 5*hcr, num=num)
+            charge = charge_hydraulique(h, Q/Sfunc(h), z)
+            plt.plot(h, charge, label="H(h)")
+            plt.axline((hcr, H), slope=0,
+                       ls=':', c='k', label=f"H$=${H:.2f} m")
+            plt.axline((hcr, H), slope=float('inf'),
+                       alpha=0.2, c='k', label='h$_{cr}=$'+f"{hcr:.2f} m")
+            plt.axline((xsub, H), slope=float('inf'),
+                       ls='-.', c='k', label='h$_{sub}=$'+f"{xsub:.2f} m")
+            plt.axline((xsup, H), slope=float('inf'),
+                       ls='-.', c='k', label='h$_{sup}=$'+f"{xsup:.2f} m")
+            plt.legend()
+            plt.xlabel("height (m)")
+            plt.ylabel("hydraulic head (m)")
+            plt.show()
+
+    return (xsub, xsup)
+
+
+if __name__ == "__main__":
+    from matplotlib import pyplot as plt
+    print(water_depth_solutions(5, 2, lambda h: 0.3*h, 0.5, plot=True))
