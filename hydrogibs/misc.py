@@ -317,7 +317,7 @@ class Ressaut:
             (h1x, h2x, h3x)
         ) = self.results_verbose
 
-        xmax = 2 * x2x.max()
+        xmax = 2 * x2x.max() if x2x.size else 4 * x2[-1]
 
         x = np.concatenate((x1, x2, x3))
         bed = -self.i1 * x
@@ -374,7 +374,7 @@ class Ressaut:
         elif chezy_C is not None:
             return 'Chézy', chezy_C, lambda q, i, C: (q/C/np.sqrt(i))**(2/3)
         elif ms_K is not None:
-            return 'Manning', ms_K, lambda q, i, K: (q/K/np.sqrt(i))**(2/3)
+            return 'Manning', ms_K, lambda q, i, K: (q/K/np.sqrt(i))**(3/5)
 
     def _xarrays(self, x0, xt, num, dx):
         xf = x0 + 100 * (xt-x0)
@@ -393,6 +393,6 @@ class Ressaut:
 if __name__ == "__main__":
     r = Ressaut(
         q=10, i1=0.05, i2=0.002, p=0.5,
-        h0=2, chezy_C=50, x0=0, xt=10, dx=0.25
+        h0=2, ms_K=30, x0=0, xt=10, dx=0.25
     )
     r.diagram(show=True, figsize=(10, 5))
