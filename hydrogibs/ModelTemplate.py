@@ -6,6 +6,13 @@ class Rain:
     def __matmul__(self, catchment):
         return model(rain=self, catchment=catchment)
 
+    def __repr__(self) -> str:
+        s = "\n".join(
+            f"\t{k}: {v}"
+            for k, v in self.__dict__.items()
+        )
+        return f"{self.__class__.__name__}: {'{'}\n{s}\n{'}'}"
+
 
 class Catchment:
 
@@ -14,6 +21,13 @@ class Catchment:
 
     def __matmul__(self, rain):
         return rain @ self
+
+    def __repr__(self) -> str:
+        s = "\n".join(
+            f"\t{k}: {v}"
+            for k, v in self.__dict__.items()
+        )
+        return f"{self.__class__.__name__}: {'{'}\n{s}\n{'}'}"
 
 
 class Event:
@@ -24,17 +38,19 @@ class Event:
     def diagram(self, *args, **kwargs):
         return Diagram(self, *args, **kwargs)
 
+    def __repr__(self) -> str:
+        s = "\n".join(
+            f"\t{k}: {v.max()}"
+            for k, v in self.__dict__.items()
+        )
+        return f"{self.__class__.__name__}: {'{'}\n{s}\n{'}'}"
 
-class Diagram:
-
-    def __init__(self, *args, **kwargs) -> None:
-        return NotImplemented
-
-    def update(self, canvas=None):
-        return NotImplemented
-
-    def zoom(self):
-        return NotImplemented
+    def __format__(self, __format_spec: str) -> str:
+        s = "\n".join(
+            f"\t{k}: {v.max():{__format_spec}}"
+            for k, v in self.__dict__.items()
+        )
+        return f"{self.__class__.__name__} maximums: {'{'}\n{s}\n{'}'}"
 
 
 # class Model:
@@ -51,3 +67,15 @@ class Diagram:
 
 def model(catchment: Catchment, rain: Rain) -> Event:
     return NotImplemented
+
+
+class Diagram:
+
+    def __init__(self, *args, **kwargs) -> None:
+        return NotImplemented
+
+    def update(self, canvas=None):
+        return NotImplemented
+
+    def zoom(self):
+        return NotImplemented

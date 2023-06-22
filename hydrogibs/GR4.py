@@ -1,6 +1,6 @@
 import numpy as np
 from matplotlib import pyplot as plt
-from typing import Callable, Literal
+from typing import Callable
 from hydrogibs.ModelApp import ModelApp, Entry
 from hydrogibs.constants import GR4presets
 import hydrogibs.ModelTemplate as ModelTemplate
@@ -440,13 +440,7 @@ def gr4(catchment, rain, volume_check=False):
     return Event(time, dP, V, dTp+dTv, Qp, Qv, Qp+Qv)
 
 
-def GR4_demo():
-
+if __name__ == "__main__":
     rain = BlockRain(50, duration=1.8, observation_span=5.8)
     catchment = Catchment("Rimbaud")
-    # event = catchment @ rain
     App(catchment, rain)
-
-
-if __name__ == "__main__":
-    GR4_demo()
