@@ -2,9 +2,7 @@ import numpy as np
 from matplotlib import pyplot as plt
 from scipy.optimize import OptimizeResult, minimize, fsolve
 from warnings import warn
-
-
-_g = 9.81
+from ..constants import g
 
 
 def montana(
@@ -175,11 +173,11 @@ def zeller(montana_params: tuple,
     return Q
 
 
-def charge_hydraulique(h, v, z=.0, g=_g):
+def charge_hydraulique(h, v, z=.0, g=g):
     return h + z + v**2/(2*g)
 
 
-def critical_depth(Q, Sfunc, eps=0.1, h0=1, g=_g):
+def critical_depth(Q, Sfunc, eps=0.1, h0=1, g=g):
 
     def deriv(h):
         return (Sfunc(h+eps) - Sfunc(h-eps)) / (2*eps)
@@ -190,7 +188,7 @@ def critical_depth(Q, Sfunc, eps=0.1, h0=1, g=_g):
     ))
 
 
-def water_depth_solutions(H, Q, Sfunc, z=0, g=_g,
+def water_depth_solutions(H, Q, Sfunc, z=0, g=g,
                           eps=10**-3, num=100, **optkwargs):
 
     hcr = critical_depth(Q, Sfunc)
@@ -234,7 +232,7 @@ def besseEuler(x, y0, slope, hn, hc, stop=False):
     return y
 
 
-def conjugate(q, h, g=_g):
+def conjugate(q, h, g=g):
     return 0.5 * h * (np.sqrt(
         8*(q/h**1.5/np.sqrt(g))**2 + 1
     ) - 1)
@@ -244,7 +242,7 @@ class Ressaut:
 
     def __init__(self,
                  q, i1, i2, h0, x0, xt,
-                 p=0., ms_K=None, chezy_C=None, g=_g,
+                 p=0., ms_K=None, chezy_C=None, g=g,
                  dx=None, num=None
                  ) -> None:
 
@@ -348,11 +346,17 @@ class Ressaut:
             ax.plot(x2, bed2 + h2, label='supercritique')
             ax.plot(x3, bed3 + h3, label='subcritique')
             ax.plot(x, bed + (self.q**2/self.g)**(1/3),
-                    '-', lw=1, label="h$_{cr}$")
+                    ':', lw=1, label="h$_{cr}$")
             bedx = bed[x1.size+x2.size:x1.size+x2.size+x2x.size]
             ax.plot(x2x, bedx + h2x, '-.k', alpha=0.4)
             ax.plot(x2x, bedx + conjugate(self.q, h2x), '--k', alpha=0.4)
-            plt.plot(x, bed, '-k', lw=2, label='lit')
+            plt.fill_between(x, bed, bed.min()*0.9,
+                             color='k', edgecolor='none',
+                             alpha=0.8, lw=2, label='lit')
+            plt.fill_between(
+                x, bed, bed + np.concatenate((h1, h2, h3)),
+                color='b', edgecolor='none', alpha=0.2, zorder=1
+            )
             ax.set_xlabel("x (m)")
             ax.set_ylabel("h (m.s.m.)")
 
@@ -365,6 +369,7 @@ class Ressaut:
             ax.legend(loc="center right")
 
         if show:
+            plt.tight_layout()
             plt.show()
         return fig, ax
 

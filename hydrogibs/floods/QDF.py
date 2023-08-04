@@ -1,11 +1,30 @@
 import numpy as np
-from hydrogibs.misc import Turraza
-from typing import Literal, Union
+from ..misc.misc import Turraza
+from typing import Literal
 from matplotlib import pyplot as plt
-from hydrogibs.ModelApp import ModelApp, Entry
-from hydrogibs.constants import QDFcoefs_mean, QDFcoefs_threshold
+from .constants import QDFcoefs_mean, QDFcoefs_threshold
 from warnings import warn
 from scipy.optimize import least_squares
+
+
+def _arange_QDFcoefs(path):
+    with open(path) as file:
+        data = [
+            line.split(',')
+            for line in file.read().splitlines()[1:]
+        ]
+        data = [
+            (line[0], *map(float, line[1:]))
+            for line in data
+        ]
+    return {
+        name: dict(A=alphas[:3], B=alphas[3:6], C=alphas[6:])
+        for name, *alphas in data
+    }
+
+
+QDFcoefs_mean = _arange_QDFcoefs('hydrogibs/floods/qdf-mean.csv')
+QDFcoefs_thres = _arange_QDFcoefs('hydrogibs/floods/qdf-thres.csv')
 
 
 class Catchment:
@@ -138,49 +157,13 @@ class QDFdiagram:
         canvas.draw()
 
 
-def App(catchment: Catchment = None,
-        rain: Rain = None,
-        style: str = "seaborn",
-        *args, **kwargs):
-    if catchment is None:
-        catchment = Catchment("soyans",
-                              specific_duration=1,
-                              surface=1.8,
-                              length=2,
-                              mean_slope=9.83/100)
-    if rain is None:
-        rain = Rain(1, 100, 0.3, 0.3)
-
-    if hasattr(catchment, "specific_duration"):
-        entries = [("catchment", "specific_duration", "h", "ds")]
-    else:
-        entries = [
-            ("catchment", "surface", "km^2", "S"),
-            ("catchment", "length", "km", "L"),
-            ("catchment", "mean_slope", "%", "im")
-        ]
-    entries += [
-        ("rain", "duration", "h", "d"),
-        ("rain", "return_period", "y", "T"),
-        ("rain", "specific_discharge", "m3/s", "Qs"),
-        ("rain", "discharge_Q10", "m3/s", "Q10"),
-        ("rain", "tf", "h")
-    ]
-    entries = map(lambda e: Entry(*e), entries)
-    ModelApp(
-        catchment=catchment,
-        rain=rain,
-        entries=entries
-    )
-
-
 def qdf(catchment, rain):
 
     constants_threshold = list(
         QDFcoefs_threshold[catchment.model.capitalize()].values()
     )
     constants_mean = list(
-        QDFcoefs_threshold[catchment.model.capitalize()].values()
+        QDFcoefs_mean[catchment.model.capitalize()].values()
     )
 
     if hasattr(catchment, "specific_duration"):
@@ -246,16 +229,3 @@ def discharge(Q10, Qsp, T, constants, d, ds):
             f"{T = :.0f} is not within [0.5:1000] years"
         )
     return Q10 + Qsp * Q
-
-
-def main():
-
-    App(catchment=Catchment(model="soyans",
-                            specific_duration=1,
-                            surface=1.8,
-                            length=2,
-                            mean_slope=9.83/100))
-
-
-if __name__ == "__main__":
-    main()

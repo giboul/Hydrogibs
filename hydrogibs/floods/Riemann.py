@@ -1,16 +1,13 @@
 import numpy as np
 from matplotlib import pyplot as plt
-
-_rho = 1000
-_g = 9.81
-_mu = 0.001
+from ..constants import g, rho, mu
 
 
 def rankine_hugoniot(h, h0, i, K):
     return K * np.sqrt(i) * (h**(5/3) - h0**(5/3))/(h - h0)
 
 
-def vague(x, t, h0, length, theta, rho=_rho, g=_g, mu=_mu):
+def vague(x, t, h0, length, theta, rho=rho, g=g, mu=mu):
     hmax = np.sqrt(mu/(rho * g * np.sin(theta)))
 
     h = np.full_like(x, hmax)
@@ -30,7 +27,7 @@ class Riemann:
         self.theta = theta
         self.calculate()
 
-    def precalculate(self, rho=_rho, g=_g, mu=_mu, slice=1):
+    def precalculate(self, rho=rho, g=g, mu=mu, slice=1):
         self.csign = np.sign(np.diff(
             self.height,
             prepend=self.height[0]

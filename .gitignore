@@ -1,7 +1,8 @@
 .vscode/
 dist/
 hydrogibs.egg-info/
-hydrogibs/__pycache__/
+__pycache__/
 pyproject.toml
 test.*
 Civil-*
+build/

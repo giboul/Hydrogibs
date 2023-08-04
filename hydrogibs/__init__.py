@@ -1,3 +1,3 @@
-from hydrogibs import GR4, QDF, SoCoSe
-from hydrogibs.RationalMethod import rational_method
-from hydrogibs.misc import *
+from .floods import QDF, GR4, SoCoSe
+from .floods.RationalMethod import rational_method
+from .misc.misc import Ressaut, crupedix

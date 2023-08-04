@@ -1,0 +1,10 @@
+Model,S [km2],Region,X1 [%],X2 [mm],X3 [%/h],X4 [h],R/T [%],Group
+Laval,0.86,Alpes-du-Sud,57.6,7.28,2.4,0.38,91,1
+Erlenbach,0.64,Suisse Centrale,46.5,13.6,16.2,0.63,53,1
+Rimbaud,1.5,Alpes-du-Sud,35.4,40,2.28,1.07,57,2
+Latte,0.19,Massif Central,14.4,75.4,3.96,0.78,41,2
+Sapine,0.54,Massif Central,15.7,71.1,0.90,1.03,34,2
+Rietholzbach,3.31,Suisse Centrale,26.5,17,2.82,1.11,41,3
+Lumpenenbach,0.93,Suisse Centrale,22.6,12.2,9.6,0.5,41,3
+Vogelbach,1.55,Suisse Centrale,31.4,11.5,5.88,0.64,56,3
+Brusquet,1.08,Alpes-du-Sud,13.8,22.4,0.72,1.63,54,3
