@@ -212,10 +212,8 @@ def gr4(catchment: Catchment, rain: Rain, volume_check=False) -> Event:
     )
 
     # Water flows
-    dTp = X1*dP  # due to runoff
+    dTp = X1*dP_effective  # due to runoff
     dTv = X3*V  # due to volume emptying
-    dTp[abstraction] = 0
-    dTv[abstraction] = 0
 
     # transfer function as array
     q = catchment.transfer_function(X4, num=(time <= 2*X4).sum())
@@ -225,14 +223,14 @@ def gr4(catchment: Catchment, rain: Rain, volume_check=False) -> Event:
 
     Vtot = np.trapz(x=time, y=Qp + Qv)*3600
     Ptot = np.trapz(x=time, y=dP)*S*1000
-    X2v = X2*S*1000 if ~abstraction.any() else Ptot
+    X2v = X2*S*1000 if (~abstraction).any() else Ptot
     if volume_check:
         print(
             "\n"
             f"Stored volume: {Vtot + X2v:.2e}\n"
-            f"\tDischarge     volume: {Vtot:.2e}\n"
+            f"\tDischarge     volume: {Vtot:.4e}\n"
             f"\tInitial  abstraction: {X2v:.2e}\n"
-            f"Precipitation volume: {Ptot:.2e}\n\n"
+            f"Precipitation volume: {Ptot:.2e}"
         )
 
     return Event(time, dP, V, dTp+dTv, Qp, Qv, Qp+Qv)
@@ -565,6 +563,8 @@ if ctk:
 
 
 if __name__ == "__main__":
-    rain = BlockRain(50, duration=1.8, observation_span=5.8)
-    catchment = PresetCatchment("Rimbaud")
-    App(catchment, rain)
+    rain = BlockRain(50, duration=1.8, observation_span=1000).to_rain()
+    catchment = PresetCatchment("Laval")
+    catchment.X2 = 80
+    # App(catchment, rain)
+    gr4(catchment, rain, volume_check=True)
