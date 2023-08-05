@@ -566,5 +566,5 @@ if ctk:
 
 if __name__ == "__main__":
     rain = BlockRain(50, duration=1.8, observation_span=5.8)
-    catchment = Catchment("Rimbaud")
+    catchment = PresetCatchment("Rimbaud")
     App(catchment, rain)
