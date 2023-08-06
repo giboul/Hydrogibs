@@ -1,8 +1,10 @@
 import numpy as np
 from matplotlib import pyplot as plt
-from typing import Tuple, Union, Callable, Literal
+from typing import Callable
 from dataclasses import dataclass
 from warnings import warn
+from datetime import datetime
+from matplotlib.dates import DateFormatter
 
 
 try:
@@ -47,6 +49,17 @@ class Rain:
 
     time: np.ndarray
     rainfall: np.ndarray
+    _duration: np.ndarray = None
+
+    def __post_init__(self):
+
+        t0 = self.time[0]
+        if isinstance(t0, datetime):
+            self._duration = np.array([
+                d.total_seconds() for d in self.time - t0
+            ]) / 3600
+        if isinstance(t0, float):
+            self._duration = self.time.copy()
 
     def __matmul__(self, catchment):
         if isinstance(self, BlockRain):
@@ -192,7 +205,7 @@ def gr4(catchment: Catchment, rain: Rain, volume_check=False) -> Event:
     V0 = catchment.initial_volume  # mm
 
     # Rainfall data
-    time = rain.time  # h
+    time = rain._duration  # h
     dP = rain.rainfall  # mm/h
     dt = np.diff(time, append=2*time[-1]-time[-2])  # h
 
@@ -233,7 +246,7 @@ def gr4(catchment: Catchment, rain: Rain, volume_check=False) -> Event:
             f"Precipitation volume: {Ptot:.2e}"
         )
 
-    return Event(time, dP, V, dTp+dTv, Qp, Qv, Qp+Qv)
+    return Event(rain.time, dP, V, dTp+dTv, Qp, Qv, Qp+Qv)
 
 
 with open('hydrogibs/floods/GR4.csv') as file:
@@ -287,6 +300,7 @@ class Diagram:
         Qv = event.discharge_volume
         Q = event.discharge
 
+        tmin = time.min()
         tmax = time.max()
         Qmax = Q.max()
         rmax = rain.max()
@@ -337,9 +351,23 @@ class Diagram:
             )
             ax1.set_ylabel("$Q$ (m³/s)", color=c1)
             ax1.set_xlabel("t (h)")
-            ax1.set_xlim((0, tmax if tmax else 1))
+            ax1.set_xlim((tmin, tmax if tmax else 1))
             ax1.set_ylim((0, Qmax*1.1 if Qmax else 1))
             ax1.tick_params(colors=c1, axis='y')
+            if isinstance(tmin, datetime):
+                span = (tmax-tmin).total_seconds()
+                dateformat = None
+                if span < 3600 * 24 * 31:
+                    dateformat = "%b-%d %H:%M"
+                if span < 3600 * 24:
+                    dateformat = "%H:%M"
+                elif span < 3600:
+                    dateformat = "%M"
+                if dateformat is not None:
+                    ax1.xaxis.set_major_formatter(DateFormatter(dateformat))
+                ax1.set_xticks(ax1.get_xticks())
+                ax1.set_xticklabels(ax1.get_xticklabels(), rotation=45)
+                ax1.set_xlabel("t (dates)")
 
             lineP, = ax2.step(
                 time,
@@ -402,12 +430,13 @@ class Diagram:
         ax1, ax2, ax3 = self.axes
 
         t, Q = discharge.get_data()
+        tmin = t.min()
         tmax = t.max()
         Qmax = Q.max()
         Imax = rain.get_data()[1].max()
         Vmax = storage_vol.get_data()[1].max()
 
-        ax1.set_xlim((0, tmax if tmax else 1))
+        ax1.set_xlim((tmin, tmax if tmax else 1))
         ax1.set_ylim((0, Qmax*1.1 if Qmax else 1))
         ax2.set_ylim((Imax*1.2 if Imax else 1, -Imax/20))
         ax3.set_ylim((0, Vmax*1.1 if Vmax else 1))

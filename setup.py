@@ -15,7 +15,8 @@ setup(
     data_files=[
         "hydrogibs/floods/GR4.csv",
         "hydrogibs/floods/qdf-mean.csv",
-        "hydrogibs/floods/qdf-thres.csv"
+        "hydrogibs/floods/qdf-thres.csv",
+        "hydrogibs/test/rain.csv"
     ],
     long_description=long_description,
     long_description_content_type="text/markdown",
