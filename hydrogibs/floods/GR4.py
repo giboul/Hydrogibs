@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from warnings import warn
 from datetime import datetime
 from matplotlib.dates import DateFormatter
+from os.path import join, dirname
 
 
 try:
@@ -249,7 +250,7 @@ def gr4(catchment: Catchment, rain: Rain, volume_check=False) -> Event:
     return Event(rain.time, dP, V, dTp+dTv, Qp, Qv, Qp+Qv)
 
 
-with open('hydrogibs/floods/GR4.csv') as file:
+with open(join(dirname(__file__), 'GR4.csv')) as file:
     """
     Creating the presets such that:
     >>> GR4presetsPresets[preset] = (X1, X2, X3)

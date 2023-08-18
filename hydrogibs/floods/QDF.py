@@ -5,10 +5,11 @@ from matplotlib import pyplot as plt
 from .constants import QDFcoefs_mean, QDFcoefs_threshold
 from warnings import warn
 from scipy.optimize import least_squares
+from os.path import join, dirname
 
 
 def _arange_QDFcoefs(path):
-    with open(path) as file:
+    with open(join(dirname(__file__), path)) as file:
         data = [
             line.split(',')
             for line in file.read().splitlines()[1:]
@@ -23,8 +24,8 @@ def _arange_QDFcoefs(path):
     }
 
 
-QDFcoefs_mean = _arange_QDFcoefs('hydrogibs/floods/qdf-mean.csv')
-QDFcoefs_thres = _arange_QDFcoefs('hydrogibs/floods/qdf-thres.csv')
+QDFcoefs_mean = _arange_QDFcoefs('qdf-mean.csv')
+QDFcoefs_thres = _arange_QDFcoefs('qdf-thres.csv')
 
 
 class Catchment:
