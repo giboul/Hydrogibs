@@ -8,19 +8,7 @@ from matplotlib.dates import DateFormatter
 from os.path import join, dirname
 
 
-try:
-    import customtkinter as ctk
-    from matplotlib.backends.backend_tkagg import (
-        FigureCanvasTkAgg,
-        NavigationToolbar2Tk
-    )
-    from matplotlib.backend_bases import key_press_handler
-except ImportError:
-    warn("Install customtkinter for interactive apps")
-    ctk = False
-
-
-"""
+r"""
 This module is fully dedicated to the GR4h method
 
 It contains:
@@ -50,26 +38,24 @@ class Rain:
 
     time: np.ndarray
     rainfall: np.ndarray
-    _duration: np.ndarray = None
 
-    def __post_init__(self):
+    def _duration(self):
 
         t0 = self.time[0]
         if isinstance(t0, datetime):
-            self._duration = np.array([
+            return np.array([
                 d.total_seconds() for d in self.time - t0
             ]) / 3600
         if isinstance(t0, float):
-            self._duration = self.time.copy()
+            return self.time.copy()
 
     def __matmul__(self, catchment):
-        if isinstance(self, BlockRain):
-            return gr4(rain=self.to_rain(), catchment=catchment)
         return gr4(rain=self, catchment=catchment)
 
 
-class BlockRain(Rain):
-    """
+@dataclass(slots=True)
+class BlockRain:
+    r"""
     A constant rain with a limited duration.
 
     Args:
@@ -84,40 +70,26 @@ class BlockRain(Rain):
     >>> event = rain @ catchment
     """
 
-    def __init__(self,
-                 intensity: float,
-                 duration: float = 1.0,
-                 timestep: float = None,
-                 observation_span: float = None) -> None:
+    intensity: float
+    duration: float
+    timestep: float = None
+    observation_span: float = None
 
-        if timestep is None:
-            timestep = duration/200
-        if observation_span is None:
-            observation_span = 5 * duration
+    def __post_init__(self) -> None:
 
-        assert 0 <= intensity
-        assert 0 <= duration
-        assert 0 <= timestep <= duration
-        assert 0 <= observation_span > duration
-
-        self.intensity = intensity
-        self.duration = duration
-        self.timestep = timestep
-        self.observation_span = observation_span
+        if self.observation_span is None:
+            self.observation_span = 5 * self.duration
+        if self.timestep is None:
+            self.timestep = self.duration / 200
 
     def to_rain(self):
-
-        time = np.arange(0, self.observation_span, self.timestep)
-        rainfall = np.full_like(time, self.intensity)
-        rainfall[time > self.duration] = 0
-
-        self.time = time
-        self.rainfall = rainfall
-
-        return self
+        t = np.arange(0, self.observation_span, step=self.timestep)
+        r = np.full_like(t, self.intensity)
+        r[t > self.duration] = 0
+        return Rain(t, r)
 
     def __matmul__(self, catchment):
-        return gr4(rain=self.to_rain(), catchment=catchment)
+        return self.to_rain() @ catchment
 
 
 def _transfer_func(X4: float, num: int) -> np.ndarray:
@@ -206,7 +178,7 @@ def gr4(catchment: Catchment, rain: Rain, volume_check=False) -> Event:
     V0 = catchment.initial_volume  # mm
 
     # Rainfall data
-    time = rain._duration  # h
+    time = rain._duration()  # h
     dP = rain.rainfall  # mm/h
     dt = np.diff(time, append=2*time[-1]-time[-2])  # h
 
@@ -449,152 +421,161 @@ class Diagram:
         canvas.draw()
 
 
-if ctk:
-    class App:
+class App:
 
-        def __init__(self,
-                     catchment: Catchment,
-                     rain: Rain,
-                     title: str = None,
-                     appearance: str = "dark",
-                     color_theme: str = "dark-blue",
-                     style: str = "seaborn",
-                     close_and_clear: bool = True,
-                     *args, **kwargs):
+    def __init__(self,
+                 catchment: Catchment,
+                 rain: Rain,
+                 title: str = None,
+                 appearance: str = "dark",
+                 color_theme: str = "dark-blue",
+                 style: str = "seaborn",
+                 close_and_clear: bool = True,
+                 *args, **kwargs):
 
-            self.catchment = catchment
-            self.rain = rain
-            self.event = rain @ catchment
+        try:
+            import customtkinter as ctk
+        except ImportError:
+            raise ("Install customtkinter for interactive apps")
 
-            # ctk.set_appearance_mode(appearance)
-            # ctk.set_default_color_theme(color_theme)
+        self.catchment = catchment
+        self.rain = rain
+        self.event = rain @ catchment
 
-            self.root = ctk.CTk()
-            self.root.title(title)
-            self.root.bind('<Return>', self.entries_update)
+        # ctk.set_appearance_mode(appearance)
+        # ctk.set_default_color_theme(color_theme)
 
-            self.dframe = ctk.CTkFrame(master=self.root)
-            self.dframe.grid(row=0, column=1, sticky="NSEW")
+        self.root = ctk.CTk()
+        self.root.title(title)
+        self.root.bind('<Return>', self.entries_update)
 
-            self.init_diagram(style=style, show=False, *args, **kwargs)
+        self.dframe = ctk.CTkFrame(master=self.root)
+        self.dframe.grid(row=0, column=1, sticky="NSEW")
 
-            self.pframe = ctk.CTkFrame(master=self.root)
-            self.pframe.grid(column=0, row=0, sticky="NSEW")
+        self.init_diagram(style=style, show=False, *args, **kwargs)
 
-            entries = [
-                ("catchment", "X1", "-"),
-                ("catchment", "X2", "mm"),
-                ("catchment", "X3", "1/h"),
-                ("catchment", "X4", "h"),
-                ("catchment", "surface", "km²", "S"),
-                ("catchment", "initial_volume", "mm", "V0"),
-            ]
-            entries += [
-                ("rain", "observation_span", "mm", "tf"),
-                ("rain", "intensity", "mm/h", "I0"),
-                ("rain", "duration", "h", "t0")
-            ] if isinstance(rain, BlockRain) else []
+        self.pframe = ctk.CTkFrame(master=self.root)
+        self.pframe.grid(column=0, row=0, sticky="NSEW")
 
-            self.entries = dict()
-            for row, entry in enumerate(entries, start=1):
+        entries = [
+            ("catchment", "X1", "-"),
+            ("catchment", "X2", "mm"),
+            ("catchment", "X3", "1/h"),
+            ("catchment", "X4", "h"),
+            ("catchment", "surface", "km²", "S"),
+            ("catchment", "initial_volume", "mm", "V0"),
+        ]
+        entries += [
+            ("rain", "observation_span", "mm", "tf"),
+            ("rain", "intensity", "mm/h", "I0"),
+            ("rain", "duration", "h", "t0")
+        ] if isinstance(rain, BlockRain) else []
 
-                object, key, unit, *alias = entry
+        self.entries = dict()
+        for row, entry in enumerate(entries, start=1):
 
-                entryframe = ctk.CTkFrame(master=self.pframe)
-                entryframe.grid(sticky="NSEW")
-                unit_str = f"[{unit}]"
-                name = alias[0] if alias else key
+            object, key, unit, *alias = entry
 
-                label = ctk.CTkLabel(
-                    master=entryframe,
-                    text=f" {name:<5} {unit_str:<6} ",
-                    font=("monospace", 14)
+            entryframe = ctk.CTkFrame(master=self.pframe)
+            entryframe.grid(sticky="NSEW")
+            unit_str = f"[{unit}]"
+            name = alias[0] if alias else key
+
+            label = ctk.CTkLabel(
+                master=entryframe,
+                text=f" {name:<5} {unit_str:<6} ",
+                font=("monospace", 14)
+            )
+            label.grid(row=row, column=0, sticky="EW", ipady=5)
+
+            input = ctk.CTkEntry(master=entryframe, width=50)
+
+            value = getattr(getattr(self, object), key)
+            input.insert(0, value)
+            input.grid(row=row, column=1, sticky="EW")
+
+            slider = ctk.CTkSlider(
+                master=entryframe,
+                from_=0, to=2*value if value else 1,
+                number_of_steps=999,
+                command=(
+                    lambda _, object=object, key=key:
+                    self.slider_update(object, key)
                 )
-                label.grid(row=row, column=0, sticky="EW", ipady=5)
+            )
+            slider.grid(row=row, column=2, sticky="EW")
 
-                input = ctk.CTkEntry(master=entryframe, width=50)
+            self.entries[key] = dict(
+                object=object,
+                label=label,
+                input=input,
+                slider=slider
+            )
 
-                value = getattr(getattr(self, object), key)
-                input.insert(0, value)
-                input.grid(row=row, column=1, sticky="EW")
+        ctk.CTkButton(master=self.pframe,
+                      text="Reset zoom",
+                      command=lambda: self.diagram.home_zoom(self.canvas)
+                      ).grid(pady=10)
 
-                slider = ctk.CTkSlider(
-                    master=entryframe,
-                    from_=0, to=2*value if value else 1,
-                    number_of_steps=999,
-                    command=(
-                        lambda _, object=object, key=key:
-                        self.slider_update(object, key)
-                    )
-                )
-                slider.grid(row=row, column=2, sticky="EW")
+        self.root.mainloop()
+        if close_and_clear:
+            plt.close()
 
-                self.entries[key] = dict(
-                    object=object,
-                    label=label,
-                    input=input,
-                    slider=slider
-                )
+    def init_diagram(self, *args, **kwargs):
 
-            ctk.CTkButton(master=self.pframe,
-                          text="Reset zoom",
-                          command=lambda: self.diagram.home_zoom(self.canvas)
-                          ).grid(pady=10)
+        from matplotlib.backends.backend_tkagg import (
+            FigureCanvasTkAgg,
+            NavigationToolbar2Tk
+        )
+        from matplotlib.backend_bases import key_press_handler
 
-            self.root.mainloop()
-            if close_and_clear:
-                plt.close()
+        diagram = self.event.diagram(*args, **kwargs)
 
-        def init_diagram(self, *args, **kwargs):
+        self.canvas = FigureCanvasTkAgg(diagram.figure, master=self.dframe)
+        toolbar = NavigationToolbar2Tk(
+            canvas=self.canvas, window=self.dframe)
+        toolbar.update()
+        self.canvas._tkcanvas.pack()
+        self.canvas.draw()
+        self.canvas.get_tk_widget().pack()
+        self.canvas.mpl_connect('key_press_event',
+                                lambda arg: key_press_handler(
+                                    arg, self.canvas, toolbar
+                                ))
+        self.diagram = diagram
+        self.root.update()
 
-            diagram = self.event.diagram(*args, **kwargs)
+    def slider_update(self, object: str, key: str):
 
-            self.canvas = FigureCanvasTkAgg(diagram.figure, master=self.dframe)
-            toolbar = NavigationToolbar2Tk(
-                canvas=self.canvas, window=self.dframe)
-            toolbar.update()
-            self.canvas._tkcanvas.pack()
-            self.canvas.draw()
-            self.canvas.get_tk_widget().pack()
-            self.canvas.mpl_connect('key_press_event',
-                                    lambda arg: key_press_handler(
-                                        arg, self.canvas, toolbar
-                                    ))
-            self.diagram = diagram
-            self.root.update()
+        value = self.entries[key]["slider"].get()
+        self.entries[key]["input"].delete(0, 'end')
+        self.entries[key]["input"].insert(0, f"{value:.2f}")
+        setattr(getattr(self, object), key, value)
+        self.update()
 
-        def slider_update(self, object: str, key: str):
+    def entries_update(self, _KeyPressEvent):
 
-            value = self.entries[key]["slider"].get()
-            self.entries[key]["input"].delete(0, ctk.END)
-            self.entries[key]["input"].insert(0, f"{value:.2f}")
-            setattr(getattr(self, object), key, value)
-            self.update()
+        for key in self.entries:
 
-        def entries_update(self, _KeyPressEvent):
+            entry = self.entries[key]
+            value = float(entry["input"].get())
+            setattr(getattr(self, entry["object"]), key, value)
+            v = value if value else 1
+            slider = entry["slider"]
+            slider.configure(to=2*v)
+            slider.set(v)
 
-            for key in self.entries:
+        self.update()
 
-                entry = self.entries[key]
-                value = float(entry["input"].get())
-                setattr(getattr(self, entry["object"]), key, value)
-                v = value if value else 1
-                slider = entry["slider"]
-                slider.configure(to=2*v)
-                slider.set(v)
+    def update(self):
 
-            self.update()
-
-        def update(self):
-
-            event = self.rain @ self.catchment
-            self.diagram.update(event)
-            self.canvas.draw()
+        event = self.rain @ self.catchment
+        self.diagram.update(event)
+        self.canvas.draw()
 
 
 if __name__ == "__main__":
-    rain = BlockRain(50, duration=1.8, observation_span=1000).to_rain()
+    rain = BlockRain(50, duration=1.8, observation_span=10)
     catchment = PresetCatchment("Laval")
     catchment.X2 = 80
-    # App(catchment, rain)
-    gr4(catchment, rain, volume_check=True)
+    App(catchment, rain)
