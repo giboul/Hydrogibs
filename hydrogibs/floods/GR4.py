@@ -38,17 +38,19 @@ class Rain:
 
     time: np.ndarray
     rainfall: np.ndarray
+    _seconds: np.ndarray = None
 
-    @property
-    def _duration(self):
+    def __post_init__(self):
 
         t0 = self.time[0]
         if isinstance(t0, datetime):
-            return np.array([
+            self._seconds = np.array([
                 d.total_seconds() for d in self.time - t0
             ]) / 3600
-        if isinstance(t0, float):
-            return self.time.copy()
+
+    @property
+    def duration(self):
+        return self._seconds if self._seconds is not None else self.time
 
     def __matmul__(self, catchment):
         return gr4(rain=self, catchment=catchment)
@@ -91,10 +93,6 @@ class BlockRain:
 
     def __matmul__(self, catchment):
         return self.to_rain() @ catchment
-
-    @property
-    def _duration(self):
-        return self.duration
 
 
 def _transfer_func(X4: float, num: int) -> np.ndarray:
@@ -183,7 +181,7 @@ def gr4(catchment: Catchment, rain: Rain, volume_check=False) -> Event:
     V0 = catchment.initial_volume  # mm
 
     # Rainfall data
-    time = rain._duration  # h
+    time = rain.duration  # h
     dP = rain.rainfall  # mm/h
     dt = np.diff(time, append=2*time[-1]-time[-2])  # h
 
