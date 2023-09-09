@@ -427,8 +427,8 @@ class App:
                  catchment: Catchment,
                  rain: Rain,
                  title: str = None,
-                 appearance: str = "dark",
-                 color_theme: str = "dark-blue",
+                 appearance: str = "light",
+                 color_theme: str = "blue",
                  style: str = "seaborn",
                  close_and_clear: bool = True,
                  *args, **kwargs):
@@ -442,8 +442,8 @@ class App:
         self.rain = rain
         self.event = rain @ catchment
 
-        # ctk.set_appearance_mode(appearance)
-        # ctk.set_default_color_theme(color_theme)
+        ctk.set_appearance_mode(appearance)
+        ctk.set_default_color_theme(color_theme)
 
         self.root = ctk.CTk()
         self.root.title(title)
