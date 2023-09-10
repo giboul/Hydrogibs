@@ -103,7 +103,7 @@ def _transfer_func(X4: float, num: int) -> np.ndarray:
     discharge = convolution(_transfer_func(water_flow, time/X4))
 
     Args:
-        - X4  (float): the hydrogram's raising time
+        - X4  (float): the hydrograph's raising time
         - num  (int) : the number of elements to give to the array
 
     Returns:
@@ -130,7 +130,7 @@ class Catchment:
         X1 (float)  [-] : dQ = X1 * dPrecipitations
         X2 (float)  [mm]: Initial abstraction (vegetation interception)
         X3 (float) [1/h]: Sub-surface water volume emptying rate dQs = X3*V*dt
-        X4 (float)  [h] : the hydrogram's raising time
+        X4 (float)  [h] : the hydrograph's raising time
     """
 
     X1: float
@@ -163,7 +163,7 @@ class Event:
     discharge_volume: np.ndarray
     discharge: np.ndarray
 
-    def diagram(self, *args, **kwargs):
+    def hydrograph(self, *args, **kwargs):
         return Diagram(self, *args, **kwargs)
 
 
@@ -532,7 +532,7 @@ class App:
         )
         from matplotlib.backend_bases import key_press_handler
 
-        diagram = self.event.diagram(*args, **kwargs)
+        diagram = self.event.hydrograph(*args, **kwargs)
 
         self.canvas = FigureCanvasTkAgg(diagram.figure, master=self.dframe)
         toolbar = NavigationToolbar2Tk(
