@@ -104,7 +104,8 @@ class YearlyMaxima:
     def Q(self):
         return self.df.Q
 
-    def plot(self, fig=None, ax=None, show=False, style="ggplot"):
+    def plot(self, kind: Literal["probability", "gumbel", "return period"] = "gumbel",
+             fig=None, ax=None, show=False, style="ggplot"):
 
         with plt.style.context(style):
             with plt.style.context({'font.family': 'monospace'}):
@@ -114,14 +115,15 @@ class YearlyMaxima:
                 if ax is None:
                     ax = fig.subplots()
 
-                ax.scatter(self.u, self.Q, s=20, label="Empirique", zorder=2)
+                x = _xaxis_transformation[kind](self.p)
+                ax.scatter(x, self.Q, s=20, label="Empirique", zorder=2)
                 _prob = np.linspace(self.p.min(), self.p.max(), num=1000)
-                _u = -np.log(-np.log(_prob))
-                ax.plot(_u, self.frechet(_prob), label=rf"Fréchet $\xi={self.frechet_params[2]:.2f}$", zorder=1)
-                ax.plot(_u, self.weibull(_prob), label=rf"Weibull $\xi={self.weibull_params[2]:.2f}$", zorder=0)
-                ax.plot(_u, self.gumbel(_prob), label='Gumbel', zorder=0)
+                _x = _xaxis_transformation[kind](_prob)
+                ax.plot(_x, self.frechet(_prob), label=rf"Fréchet $\xi={self.frechet_params[2]:.2f}$", zorder=1)
+                ax.plot(_x, self.weibull(_prob), label=rf"Weibull $\xi={self.weibull_params[2]:.2f}$", zorder=0)
+                ax.plot(_x, self.gumbel(_prob), label='Gumbel', zorder=0)
                 ax.legend()
-                ax.set_xlabel(rf"Variable réduite de Gumbel $u=-\log\left(-\log\left(1-\frac{{1}}{{T}}\right)\right)$")
+                ax.set_xlabel(_xaxis_label[kind])
                 ax.set_ylabel(f"Quantiles des maxima\nannuels du débit (m$^3$/s)")
                 fig.tight_layout()
                 if show:
@@ -129,15 +131,29 @@ class YearlyMaxima:
         return fig, ax
 
 
+_xaxis_transformation = {
+    "gumbel": lambda p: -np.log(-np.log(p)),
+    "probability": lambda p: p,
+    "return period": lambda p: 1/(1-p)
+}
+
+_xaxis_label = {
+    "gumbel": "Variable réduite de Gumbel "
+              rf"$u=-\log\left(-\log\left(1-\frac{{1}}{{T}}\right)\right)$",
+    "probability": "Probabilité de non-dépassement",
+    "return period": "Période de retour (années)"
+}
+
+
 def main():
     df = pd.read_csv("hydrogibs/extreme/dfy.csv")
     df.t = pd.to_datetime(df.t, format="%Y-%m-%d %H:%M:%S")
 
     ym = YearlyMaxima(df.Q)
-    fig, ax = ym.plot()
+    fig, ax = ym.plot(kind='probability')
 
-    f2010 = df.sort_values("Q").t.dt.year > 2010
-    ax.scatter(ym.u[f2010], ym.Q[f2010], s=20, zorder=3)
+    # f2010 = df.sort_values("Q").t.dt.year > 2010
+    # ax.scatter(ym.u[f2010], ym.Q[f2010], s=20, zorder=3)
     plt.show()
 
 
