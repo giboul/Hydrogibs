@@ -62,7 +62,7 @@ class YearlyMaxima:
         df["prob"] = (df["rank"] - 0.28)/(n + 0.28)
         df["T"] = 1/(1 - df.prob)
         df["u"] = -np.log(-np.log(df.prob))
-        self.df = df
+        self.dataframe = df
 
         self.gumbel_params = *fit_gumbel(df.Q), 0
         bounds = default_bounds(df.Q, lower_xi=0)
@@ -72,7 +72,7 @@ class YearlyMaxima:
 
         # [setattr(self, k, lambda p: poisson(p, *getattr(self, f"{k}_params"))) for k in self.kinds]
 
-        error_dict = {kind: mse(getattr(self, kind)(self.df.prob), df.Q) for kind in self.kinds}
+        error_dict = {kind: mse(getattr(self, kind)(self.p), df.Q) for kind in self.kinds}
         best_kind = min(error_dict, key=error_dict.get)
         self.best = getattr(self, best_kind)
 
@@ -90,19 +90,19 @@ class YearlyMaxima:
 
     @property
     def u(self):
-        return self.df.u
+        return self.dataframe.u
 
     @property
     def p(self):
-        return self.df.prob
+        return self.dataframe.prob
 
     @property
     def T(self):
-        return self.df["T"]
+        return self.dataframe["T"]
 
     @property
     def Q(self):
-        return self.df.Q
+        return self.dataframe.Q
 
     def plot(self, kind: Literal["probability", "gumbel", "return period"] = "gumbel",
              fig=None, ax=None, show=False, style="ggplot"):
