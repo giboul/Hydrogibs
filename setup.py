@@ -6,7 +6,7 @@ with open("README.md", "r") as f:
 
 setup(
     name="hydrogibs",
-    version="0.0.47",
+    version="0.0.48",
     description="A personal hydrology and hydraulics package"
                 " based on Christophe Ancey's teaching: "
                 "http://fr.ancey.ch/cours/masterGC/cours-hydraulique.pdf",
