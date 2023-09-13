@@ -114,7 +114,7 @@ class YearlyMaxima:
                 if ax is None:
                     ax = fig.subplots()
 
-                ax.scatter(self.u, self.Q, s=20, label="avant 2010", zorder=2)
+                ax.scatter(self.u, self.Q, s=20, label="Empirique", zorder=2)
                 _prob = np.linspace(self.p.min(), self.p.max(), num=1000)
                 _u = -np.log(-np.log(_prob))
                 ax.plot(_u, self.frechet(_prob), label=rf"Fréchet $\xi={self.frechet_params[2]:.2f}$", zorder=1)
