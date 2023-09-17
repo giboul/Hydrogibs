@@ -16,7 +16,7 @@ def poisson(P: np.ndarray, loc: float, scale: float, shape: float):
         return loc - scale/shape * (1-(-np.log(P))**-shape)
 
 
-def fit_gumbel(values: np.ndarray):
+def fit_gumbel_params(values: np.ndarray):
 
     scale = np.sqrt(6)*values.std()/np.pi
     loc = values.mean() - 0.577*scale
@@ -24,10 +24,10 @@ def fit_gumbel(values: np.ndarray):
     return loc, scale
 
 
-def fit_poisson(quantiles, probabilities, x0=None, bounds=None):
+def fit_poisson_params(quantiles, probabilities, x0=None, bounds=None):
 
     if x0 is None:
-        x0 = *fit_gumbel(quantiles), 0
+        x0 = *fit_gumbel_params(quantiles), 0
     if bounds is None:
         bounds = default_bounds(quantiles)
 
@@ -64,15 +64,26 @@ class YearlyMaxima:
         df["u"] = -np.log(-np.log(df.prob))
         self.dataframe = df
 
-        self.gumbel_params = *fit_gumbel(df.Q), 0
+        self.gumbel_params = *fit_gumbel_params(df.Q), 0
         bounds = default_bounds(df.Q, lower_xi=0)
-        self.frechet_params = fit_poisson(df.Q, df.prob, x0=self.gumbel_params, bounds=bounds)
+        self.frechet_params = fit_poisson_params(
+            df.Q,
+            df.prob,
+            x0=self.gumbel_params,
+            bounds=bounds
+        )
         bounds[2] = (-float("inf"), 0)
-        self.weibull_params = fit_poisson(df.Q, df.prob, x0=self.gumbel_params, bounds=bounds)
+        self.weibull_params = fit_poisson_params(
+            df.Q,
+            df.prob,
+            x0=self.gumbel_params,
+            bounds=bounds
+        )
 
-        # [setattr(self, k, lambda p: poisson(p, *getattr(self, f"{k}_params"))) for k in self.kinds]
-
-        error_dict = {kind: mse(getattr(self, kind)(self.p), df.Q) for kind in self.kinds}
+        error_dict = {
+            kind: mse(getattr(self, kind)(self.p), df.Q)
+            for kind in self.kinds
+        }
         best_kind = min(error_dict, key=error_dict.get)
         self.best = getattr(self, best_kind)
 
@@ -85,7 +96,9 @@ class YearlyMaxima:
     def weibull(self, probabilities):
         return poisson(probabilities, *self.weibull_params)
 
-    def predict(self, probabailities, kind: Literal["frechet", "gumbel", "weibul", "best"] = "best"):
+    def predict(self,
+                probabailities,
+                kind: Literal["frechet", "gumbel", "weibul", "best"] = "best"):
         return getattr(self, kind)(probabailities)
 
     @property
@@ -104,8 +117,13 @@ class YearlyMaxima:
     def Q(self):
         return self.dataframe.Q
 
-    def plot(self, kind: Literal["probability", "gumbel", "return period"] = "gumbel",
-             fig=None, ax=None, show=False, style="ggplot"):
+    def plot(
+        self,
+        kind: Literal["probability", "gumbel", "return period"] = "gumbel",
+        fig=None, ax=None,
+        show=False,
+        style="ggplot"
+    ):
 
         with plt.style.context(style):
             with plt.style.context({'font.family': 'monospace'}):
@@ -116,15 +134,34 @@ class YearlyMaxima:
                     ax = fig.subplots()
 
                 x = _xaxis_transformation[kind](self.p)
-                ax.scatter(x, self.Q, s=20, label="Empirique", zorder=2)
+                ax.scatter(x, self.Q, s=20, label="Empirique", zorder=4)
+
                 _prob = np.linspace(self.p.min(), self.p.max(), num=1000)
                 _x = _xaxis_transformation[kind](_prob)
-                ax.plot(_x, self.frechet(_prob), label=rf"Fréchet $\xi={self.frechet_params[2]:.2f}$", zorder=1)
-                ax.plot(_x, self.weibull(_prob), label=rf"Weibull $\xi={self.weibull_params[2]:.2f}$", zorder=0)
-                ax.plot(_x, self.gumbel(_prob), label='Gumbel', zorder=0)
+
+                ax.plot(
+                    _x,
+                    self.frechet(_prob),
+                    label=rf"Fréchet $\xi={self.frechet_params[2]:.2f}$",
+                    zorder=2
+                )
+                ax.plot(
+                    _x,
+                    self.weibull(_prob),
+                    label=rf"Weibull $\xi={self.weibull_params[2]:.2f}$",
+                    zorder=1
+                )
+                ax.plot(
+                    _x,
+                    self.gumbel(_prob),
+                    label='Gumbel',
+                    zorder=1
+                )
                 ax.legend()
                 ax.set_xlabel(_xaxis_label[kind])
-                ax.set_ylabel(f"Quantiles des maxima\nannuels du débit (m$^3$/s)")
+                ax.set_ylabel(
+                    f"Quantiles des maxima\nannuels du débit (m$^3$/s)"
+                )
                 fig.tight_layout()
                 if show:
                     plt.show()
@@ -146,7 +183,7 @@ _xaxis_label = {
 
 
 def main():
-    df = pd.read_csv("hydrogibs/extreme/dfy.csv")
+    df = pd.read_csv("hydrogibs/extreme/débits_mensuels_reyran.csv")
     df.t = pd.to_datetime(df.t, format="%Y-%m-%d %H:%M:%S")
 
     ym = YearlyMaxima(df.Q)
