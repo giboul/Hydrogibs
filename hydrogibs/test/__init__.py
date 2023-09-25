@@ -1,0 +1,3 @@
+"""
+(giboul) Package docstring
+"""
