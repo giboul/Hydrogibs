@@ -159,9 +159,11 @@ def polygon_properties(
     Particular attention is needed for the perimeter's calculation:
 
     \b
-      _   ___         _
-    _/ \_/...\       / \
-           ↑  \_____/   \
+       _     ___           _
+      //\~~~////\~~~~~~~~~//\
+    _////\_/.....\       ////\
+    ///////// ↑ //\_____//////\
+              ↑
         This surface should not contribute
 
     Parameters
@@ -195,7 +197,39 @@ def polygon_properties(
 
 
 class Section:
+    """
+    An object storing and plotting hydraulic data about the given cross-section
 
+    Attributes
+    ----------
+    rawdata : pd.DataFrame
+        DataFrame containing given x and z coordinates
+    newdata : pd.DataFrame
+        DataFrame with more points
+    data : pd.DataFrame
+        concatenation of rawdata & newdata
+    K : float
+        Manning-Strickler coefficient
+    i : float
+        bed's slope
+
+    Properties
+    ----------
+    x : pd.Series
+        shortcut for self.data.x
+    z : pd.Series
+        shortcut for self.data.z
+
+    Methods
+    -------
+    plot(h: float = None)
+        Plots a matplotlib diagram with the profile,
+        the Q-h & Q-h_critical curves and a bonus surface from h
+    Q(h: float)
+        Returns an interpolated value of the discharge
+    h(Q: float)
+        Returns an interpolated value of the water depth
+    """
     def __init__(
         self,
         x: Iterable,  # position array from left to right river bank
@@ -217,13 +251,6 @@ class Section:
             Manning-Strickler coefficient (might add more laws later)
         i : float
             slope of the riverbed
-
-        Attributes
-        ----------
-        rawdata : pd.DataFrame
-            DataFrame containing given x and z coordinates
-        newdata : pd.DataFrame
-            DataFrame with more points
         """
 
         def new_df(x: np.ndarray, z: np.ndarray, sort_key='x', **kwargs):
