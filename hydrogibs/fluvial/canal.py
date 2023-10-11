@@ -163,6 +163,7 @@ def polygon_properties(
       //\~~~/~~~\~~~~~~~~~//\
     _////\_// ↑ /\       ////\
     ///////// ↑ //\_____//////\
+    ///////// ↑ ///////////////\
               ↑
     This lenght should not contribute to the perimeter
 
