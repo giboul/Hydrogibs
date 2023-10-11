@@ -1,6 +1,7 @@
 from typing import Iterable, Tuple
 import numpy as np
 import pandas as pd
+from scipy.interpolate import interp1d
 from matplotlib import pyplot as plt
 
 
@@ -185,8 +186,34 @@ class Section:
         K: float,  # Manning-Strickler coefficient
         i: float  # River bed's slope
     ) -> None:
+        """
+        This object is meant to derive water depth to discharge relations
+        and plot them along with the profile in a single diagram
+
+        Parameters
+        ----------
+        x : Iterable
+            x (transversal) coordinates of the profile
+        z : Iterable
+            z (elevation) coordinates of the profile
+        K : float
+            Manning-Strickler coefficient (might add more laws later)
+        i : float
+            slope of the riverbed
+
+        Attributes
+        ----------
+        rawdata : pd.DataFrame
+            DataFrame containing given x and z coordinates
+        newdata : pd.DataFrame
+            DataFrame with more points 
+        """
 
         def new_df(x: np.ndarray, z: np.ndarray):
+            """
+            Just for creating and sorting arrays faster and safer
+            thx pandas
+            """
             return pd.DataFrame(
                 zip(x, z), columns=["x", "z"]
             ).sort_values('x')
@@ -208,6 +235,15 @@ class Section:
             polygon_properties(self.x, self.z, z)
             for z in self.z
         ])
+        self.data["Q"] = self.data.S * GMS(
+            self.K,
+            self.data.S/self.data.P,
+            self.i
+        )
+
+        zsorteddata = self.data.sort_values("z")
+        self.interpolate_h_from_Q = interp1d(self.data.Q, self.data.h)
+        self.interpolate_Q_from_h = interp1d(self.data.h, self.data.Q)
 
         self.K = K
         self.i = i
@@ -237,8 +273,10 @@ class Section:
         Returns
         -------
         pyplot figure
-        elevation, pyplot axis
-        discharge - water depth, pyplot axis
+        pyplot axis
+            profile coordinates transversal position vs. elevation
+        pyplot axis
+            discharge vs. water depth
         """
         if fig is None:
             fig = plt.figure()
