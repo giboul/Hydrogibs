@@ -1,1 +1,1 @@
-recursive-include hydrogibs floods/*.csv
+recursive-include hydrogibs *.csv
