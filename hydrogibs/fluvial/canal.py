@@ -160,11 +160,11 @@ def polygon_properties(
 
     \b
        _     ___           _
-      //\~~~////\~~~~~~~~~//\
-    _////\_/.....\       ////\
+      //\~~~/~~~\~~~~~~~~~//\
+    _////\_// ↑ /\       ////\
     ///////// ↑ //\_____//////\
               ↑
-        This surface should not contribute
+    This lenght should not contribute to the perimeter
 
     Parameters
     ----------
