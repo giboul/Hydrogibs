@@ -255,6 +255,12 @@ class Section:
     @property
     def z(self):
         return self.data.z
+    
+    def Q(self, h: float):
+        return self.interpolate_Q_from_h(h)
+    
+    def h(self, Q: float):
+        return self.interpolate_h_from_Q(Q)
 
     def plot(self, h: float = None,
              fig=None, ax0=None, ax1=None, show=False):
