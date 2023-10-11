@@ -12,17 +12,32 @@ else:
 
 
 def find_roots(
-    x: np.ndarray,
-    y: np.ndarray,
+    x: Iterable,
+    y: Iterable,
     eps: float = 1e-16
 ) -> np.ndarray[float]:
     """
     Function for quickly finding the roots from an array with
     an interpolation (to avoid non-horizontal water tables)
+
+    Parameters
+    ----------
+    x : Iterable
+    y : Iterable
+
+    Returns
+    -------
+    x : np.ndarray
     """
+    x = np.asarray(x)
+    y = np.asarray(y)
+
+    x_zeros = x[y == 0]
     y[y == 0] = -eps
     s = np.abs(np.diff(np.sign(y))).astype(bool)
-    return x[:-1][s] + np.diff(x)[s]/(np.abs(y[1:][s]/y[:-1][s])+1)
+    x_roots = x[:-1][s] + np.diff(x)[s]/(np.abs(y[1:][s]/y[:-1][s])+1)
+
+    return np.concatenate((x_zeros, x_roots))
 
 
 def GMS(K: float, Rh: float, i: float) -> float:
@@ -66,9 +81,11 @@ def twin_points(x_arr: np.ndarray, z_arr: np.ndarray) -> Tuple[np.ndarray]:
     new_x = np.array([])  # to avoid looping over a dynamic array
     new_z = np.array([])
 
-    for i, z in enumerate(z_arr):
+    for i, (x, z) in enumerate(zip(x_arr, z_arr)):
         x_intersection = find_roots(x_arr, z_arr - z)
         if x_intersection.size:
+            # remove trivial answer to avoid duplicate
+            x_intersection = x_intersection[x_intersection != x]
             new_x = np.concatenate((new_x, x_intersection))
             new_z = np.concatenate((new_z, np.full_like(x_intersection, z)))
 
@@ -206,22 +223,25 @@ class Section:
         rawdata : pd.DataFrame
             DataFrame containing given x and z coordinates
         newdata : pd.DataFrame
-            DataFrame with more points 
+            DataFrame with more points
         """
 
-        def new_df(x: np.ndarray, z: np.ndarray):
+        def new_df(x: np.ndarray, z: np.ndarray, sort_key='x', **kwargs):
             """
             Just for creating and sorting arrays faster and safer
             thx pandas
             """
             return pd.DataFrame(
-                zip(x, z), columns=["x", "z"]
-            ).sort_values('x')
+                zip(x, z, *kwargs.values()), columns=["x", "z", *kwargs.keys()]
+            ).sort_values(sort_key)
+
+        self.K = K
+        self.i = i
 
         # 1. Store input data
         self.rawdata = new_df(x, z)
 
-        # 2. enhace coordinates
+        # 2. enhance coordinates
         self.newdata = new_df(*twin_points(self.rawdata.x, self.rawdata.z))
         self.data = new_df(
             np.concatenate((self.rawdata.x, self.newdata.x)),
@@ -240,13 +260,39 @@ class Section:
             self.data.S/self.data.P,
             self.i
         )
+        self.data["h"] = self.data.z - self.data.z.min()
 
         zsorteddata = self.data.sort_values("z")
         self.interpolate_h_from_Q = interp1d(self.data.Q, self.data.h)
         self.interpolate_Q_from_h = interp1d(self.data.h, self.data.Q)
 
-        self.K = K
-        self.i = i
+        x, z, h, S, P = zsorteddata[
+            ["x", "z", "h", "S", "P"]
+        ][zsorteddata.P > 0].to_numpy().T
+
+        # critical values computing
+        dS = S[2:] - S[:-2]
+        dh = h[2:] - h[:-2]
+        mask = dS != 0
+        dh_dS = dh[mask]/dS[mask]
+
+        mask = np.concatenate(([False], mask, [False]))
+        Q = np.sqrt(g*S[mask]**3*dh_dS)
+        h_cr = h[mask]
+
+        self.critical_data = new_df(
+            x=x,
+            z=z,
+            h_cr=h_cr,
+            S=S[mask],
+            P=P[mask],
+            Q=Q,
+            sort_key='h_cr'
+        )
+
+        Fr_cr = Q**2/g/S[mask]**3/dh_dS
+        if not np.isclose(Fr_cr, 1, atol=10**-3).all():
+            print("Critical water depths might not be representative")
 
     @property
     def x(self):
@@ -317,36 +363,17 @@ class Section:
         ax0.yaxis.tick_right()
         ax0.yaxis.set_label_position('right')
 
-        # normal water depths according to GMS
-        data = self.data.sort_values("z")
-        z, S, P = data[["z", "S", "P"]][data.P > 0].to_numpy().T
-
-        h = z - z.min()
-        Q = S * GMS(self.K, S/P, self.i)
-
-        # critical values computing
-        dh_dS = (h[2:] - h[:-2])/(S[2:] - S[:-2])
-        Q_cr = np.sqrt(g*S[1:-1]**3*dh_dS)
-        mask = Q_cr <= Q.max()
-        Q_cr = Q_cr[mask]
-        h_cr = h[1:-1][mask]
-        S_cr = S[1:-1][mask]
-        P_cr = P[1:-1][mask]
-
-        Fr_cr = Q_cr**2/g/S_cr**3/dh_dS[mask]
-        if not np.isclose(Fr_cr, 1, atol=10**-3).all():
-            print("Critical water depths might not be representative")
-
         # plotting water depths
-        ax1.plot(Q, h, label="$y_0$ (hauteur d'eau)")
-        ax1.plot(Q_cr, h_cr, label='$y_{cr}$ (hauteur critique)')
+        ax1.plot(self.data.Q, self.data.h, '-.', label="$y_0$ (hauteur d'eau)")
+        ax1.plot(self.critical_data.Q, self.critical_data.h_cr,
+                 '-.', label='$y_{cr}$ (hauteur critique)')
         ax1.set_xlabel('Débit [m$^3$/s]')
         ax1.set_ylabel('Profondeur [m]')
         ax1.grid(False)
 
         # plotting 'RG' & 'RD'
         x01 = (1-0.05)*self.rawdata.x.min() + 0.05*self.rawdata.x.max()
-        x09 = Q.max()
+        x09 = (1-0.95)*self.rawdata.x.min() + 0.95*self.rawdata.x.max()
         ztxt = 1.2*self.rawdata.z.mean()
         ax0.text(x01, ztxt, 'RG')
         ax0.text(x09, ztxt, 'RD')
