@@ -26,5 +26,5 @@ for sheet, K, Js, h in zip(
         i=Js
     )
 
-    section.plot()
+    section.plot(h=6)
     plt.show()

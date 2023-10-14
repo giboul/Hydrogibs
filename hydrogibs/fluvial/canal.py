@@ -297,6 +297,7 @@ class Section:
         x, z, h, S, P = zsorteddata[
             ["x", "z", "h", "S", "P"]
         ][zsorteddata.P > 0].to_numpy().T
+        self.zsorteddata = zsorteddata
 
         # critical values computing
         dS = S[2:] - S[:-2]
@@ -367,20 +368,24 @@ class Section:
             ax1.patch.set_visible(False)
 
         # plotting input bed coordinates
-        lxz, = ax0.plot(self.rawdata.x, self.rawdata.z, '-ok',
-                        label='Profil en travers')
+        lxz, = ax0.plot(self.rawdata.x, self.rawdata.z,
+                        '-o', color='gray', lw=3,
+                        label='Profil en travers complet')
         # potting framed coordinates (the ones used for computations)
-        ax0.plot(self.x, self.z, '-o', mfc='w',
+        ax0.plot(self.x, self.z,
+                 '-ok', mfc='w', lw=3,
                  zorder=lxz.get_zorder(),
-                 label='Profil en travers')
+                 label='Profil en travers utile')
 
         # bonus wet section example
         if h is not None:
             poly_data = self.data[self.data.z <= h + self.data.z.min()]
             polygon, = ax0.fill(
                 poly_data.x, poly_data.z,
-                alpha=0.6,
-                label='Section mouillée'
+                linewidth=0,
+                alpha=0.3, color='b',
+                label='Section mouillée',
+                zorder=0
             )
         ax0.set_xlabel('Distance profil [m]')
         ax0.set_ylabel('Altitude [m.s.m.]')
@@ -392,7 +397,8 @@ class Section:
         ax0.yaxis.set_label_position('right')
 
         # plotting water depths
-        ax1.plot(self.data.Q, self.data.h, '-.', label="$y_0$ (hauteur d'eau)")
+        ax1.plot(self.zsorteddata.Q, self.zsorteddata.h, '--',
+                 label="$y_0$ (hauteur d'eau)")
         ax1.plot(self.critical_data.Q, self.critical_data.h_cr,
                  '-.', label='$y_{cr}$ (hauteur critique)')
         ax1.set_xlabel('Débit [m$^3$/s]')
