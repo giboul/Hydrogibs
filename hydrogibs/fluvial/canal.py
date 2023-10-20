@@ -14,7 +14,7 @@ else:
 def find_roots(
     x: Iterable,
     y: Iterable,
-    eps: float = 1e-16
+    eps: float = 1e-5
 ) -> np.ndarray[float]:
     """
     Function for quickly finding the roots from an array with
@@ -33,7 +33,7 @@ def find_roots(
     y = np.asarray(y)
 
     x_zeros = x[y == 0]
-    y[y == 0] = -eps
+    y[np.isclose(y, 0, atol=eps, rtol=0)] = -eps
     s = np.abs(np.diff(np.sign(y))).astype(bool)
     x_roots = x[:-1][s] + np.diff(x)[s]/(np.abs(y[1:][s]/y[:-1][s])+1)
 
@@ -136,13 +136,16 @@ def strip_outside_world(x: np.ndarray, z: np.ndarray) -> Tuple[np.ndarray]:
     right_max = z[right].argmax() + argmin
     zmax = min(z[left_max], z[right_max])
 
-    # find the index opposite to zmax
-    if z[right_max] < z[left_max]:
-        # find first value below zmax starting from the bottom (argmin)
-        left_max = argmin - (left & (z <= z[right_max]))[argmin::-1].argmin()+1
-    else:
-        # find first value below zmax starting from the bottom again
-        right_max = argmin + (right & (z <= z[left_max]))[argmin:].argmin()-1
+    # strip left to the highest framed elevation
+    candidates = (left & (z <= z[right_max]))[argmin::-1]
+    if not candidates.all():
+        left_max = argmin - candidates.argmin()+1
+
+    # strip righ to the highest framed elevation
+    candidates = (right & (z <= z[left_max]))[argmin:]
+    if not candidates.all():
+        right_max = argmin + candidates.argmin()-1
+
     left[:left_max] = False
     right[right_max+1:] = False
 
@@ -294,33 +297,27 @@ class Section:
         self.interpolate_h_from_Q = interp1d(self.data.Q, self.data.h)
         self.interpolate_Q_from_h = interp1d(self.data.h, self.data.Q)
 
-        x, z, h, S, P = zsorteddata[
-            ["x", "z", "h", "S", "P"]
+        x, z, h, Q, S, P = zsorteddata[
+            ["x", "z", "h", "Q", "S", "P"]
         ][zsorteddata.P > 0].to_numpy().T
         self.zsorteddata = zsorteddata
 
         # critical values computing
         dS = S[2:] - S[:-2]
         dh = h[2:] - h[:-2]
-        mask = dS != 0
-        dh_dS = dh[mask]/dS[mask]
+        mask = ~np.isclose(dS, 0, atol=1e-10, rtol=.0)
+        dh_dS = np.full_like(x, None)
+        dh_dS[1:-1][mask] = dh[mask]/dS[mask]
 
-        mask = np.concatenate(([False], mask, [False]))
-        Q = np.sqrt(g*S[mask]**3*dh_dS)
-        h_cr = h[mask]
+        # Q is computed from the derivative of S(h)
+        # to avoid error accumulation with an integral
+        Q = np.sqrt(g*S**3*dh_dS)
 
-        self.critical_data = new_df(
-            x=x,
-            z=z,
-            h_cr=h_cr,
-            S=S[mask],
-            P=P[mask],
-            Q=Q,
-            sort_key='h_cr'
-        )
+        self.critical_data = new_df(x, z, h=h, S=S, P=P, Q=Q, sort_key='h')
 
-        Fr_cr = Q**2/g/S[mask]**3/dh_dS
-        if not np.isclose(Fr_cr, 1, atol=10**-3).all():
+        mask = np.isclose(dh_dS, 0)
+        Fr = (Q[mask]**2/g/S[mask]**3/dh_dS[mask])
+        if not np.isclose(Fr[~np.isnan(Fr)], 1, atol=10**-3).all():
             print("Critical water depths might not be representative")
 
     @property
@@ -399,7 +396,7 @@ class Section:
         # plotting water depths
         ax1.plot(self.zsorteddata.Q, self.zsorteddata.h, '--',
                  label="$y_0$ (hauteur d'eau)")
-        ax1.plot(self.critical_data.Q, self.critical_data.h_cr,
+        ax1.plot(self.critical_data.Q, self.critical_data.h,
                  '-.', label='$y_{cr}$ (hauteur critique)')
         ax1.set_xlabel('Débit [m$^3$/s]')
         ax1.set_ylabel('Profondeur [m]')
@@ -425,3 +422,17 @@ class Section:
         if show:
             return plt.show()
         return fig, ax0, ax1
+
+
+if __name__ == "__main__":
+
+    df = pd.read_csv('hydrogibs/test/fluvial/profile.csv')
+    section = Section(
+        df['Dist. cumulée [m]'],
+        df['Altitude [m s.m.]'][::-1],
+        K=33,
+        i=0.12/100
+    )
+    with plt.style.context('ggplot'):
+        # Diagramme conventionnel
+        section.plot(show=True)

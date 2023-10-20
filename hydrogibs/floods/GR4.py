@@ -577,8 +577,48 @@ class App:
         self.canvas.draw()
 
 
+def test(plot=False, app=False, datetime=False):
+    # Custom test
+    X1 = 57.6/100  # [-] dR = X1*dP
+    X2 = 7.28  # [mm] Interception par la végétation
+    X3 = 2.4/100  # [h^-1] dH = X3*V*dt, V = (1-X1)*I*dt
+    X4 = 0.38  # [h] temps de montée tm ≃ td
+
+    t0 = 1  # h
+    I0 = 66.7  # mm/h
+
+    # df = pd.read_csv(join(dirname(__file__), "rain.csv"))
+    # time = pd.to_datetime(df.Date, format="%Y-%m-%d %H:%M:%S")
+    # rainfall = df.Rainfall
+    dt = 0.01
+    if datetime is False:
+        time = np.arange(0, 24, step=dt)
+        rainfall = np.exp(-(time - 3)**2)
+        rainfall = I0 * rainfall / np.trapz(x=time, y=rainfall)
+    else:
+        import pandas as pd
+
+        df = pd.read_csv("hydrogibs/test/floods/rain.csv")
+        rainfall = df.Rainfall
+        time = df.Date
+
+    rain = Rain(time, rainfall)
+    catchment = Catchment(X1, X2, X3, X4, surface=1.8)
+
+    event = rain @ catchment
+
+    if plot:
+        Qax, Pax, Vax = event.diagram(show=False).axes
+        Pax.set_title("Rimbaud")
+        plt.show()
+
+    # rain = GR4.BlockRain(I0, t0)
+    catchment = PresetCatchment('Laval')
+    event = rain @ catchment
+
+    if app:
+        App(catchment, rain)
+
+
 if __name__ == "__main__":
-    rain = BlockRain(50, duration=1.8, observation_span=10)
-    catchment = PresetCatchment("Laval")
-    catchment.X2 = 80
-    App(catchment, rain)
+    test(app=True)

@@ -1,0 +1,5 @@
+Description,Symbole,Valeur,Unité
+Masse volumique des sédiments,ρs,2650,kg/m3
+Masse volumique de l'eau,ρ,1000,kg/m3
+Accélération de la pesanteur ,g,9.81,m/s2
+Viscosité cinématique de l'eau à 10 °C,ν,1.316E-06,m2/s
