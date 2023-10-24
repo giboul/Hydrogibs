@@ -293,14 +293,13 @@ class Section:
         )
         self.data["h"] = self.data.z - self.data.z.min()
 
-        zsorteddata = self.data.sort_values("z")
         self.interpolate_h_from_Q = interp1d(self.data.Q, self.data.h)
         self.interpolate_Q_from_h = interp1d(self.data.h, self.data.Q)
 
-        x, z, h, Q, S, P = zsorteddata[
+        self.zsorteddata = self.data.sort_values("z")
+        x, z, h, Q, S, P = self.zsorteddata[
             ["x", "z", "h", "Q", "S", "P"]
-        ][zsorteddata.P > 0].to_numpy().T
-        self.zsorteddata = zsorteddata
+        ][self.zsorteddata.P > 0].to_numpy().T
 
         # critical values computing
         dS = S[2:] - S[:-2]
@@ -314,6 +313,14 @@ class Section:
         Q = np.sqrt(g*S**3*dh_dS)
 
         self.critical_data = new_df(x, z, h=h, S=S, P=P, Q=Q, sort_key='h')
+        # remove invalid values
+        self.critical_data = self.critical_data.loc[
+            ~np.isnan(self.critical_data.Q)
+        ]
+        # strip to minimal discharge if fluvial
+        self.critical_data = self.critical_data.loc[
+            self.critical_data.Q < self.data.Q.max()
+        ]
 
         mask = np.isclose(dh_dS, 0)
         Fr = (Q[mask]**2/g/S[mask]**3/dh_dS[mask])
@@ -358,11 +365,11 @@ class Section:
         """
         if fig is None:
             fig = plt.figure()
-        if ax0 is None:
-            ax0 = fig.add_subplot()
         if ax1 is None:
             ax1 = fig.add_subplot()
-            ax1.patch.set_visible(False)
+        if ax0 is None:
+            ax0 = fig.add_subplot()
+            ax0.patch.set_visible(False)
 
         # plotting input bed coordinates
         lxz, = ax0.plot(self.rawdata.x, self.rawdata.z,
@@ -396,11 +403,13 @@ class Section:
         # plotting water depths
         ax1.plot(self.zsorteddata.Q, self.zsorteddata.h, '--',
                  label="$y_0$ (hauteur d'eau)")
-        ax1.plot(self.critical_data.Q, self.critical_data.h,
-                 '-.', label='$y_{cr}$ (hauteur critique)')
+        ax1.plot(
+            self.critical_data.Q,
+            self.critical_data.h,
+            '-.', label='$y_{cr}$ (hauteur critique)')
         ax1.set_xlabel('Débit [m$^3$/s]')
         ax1.set_ylabel('Profondeur [m]')
-        ax1.grid(False)
+        ax0.grid(False)
 
         # plotting 'RG' & 'RD'
         x01 = (1-0.05)*self.rawdata.x.min() + 0.05*self.rawdata.x.max()
@@ -415,7 +424,7 @@ class Section:
         # common legend
         lines = (*ax0.get_lines(), *ax1.get_lines())
         labels = [line.get_label() for line in lines]
-        ax1.legend(lines, labels)
+        ax0.legend(lines, labels)
 
         # showing
         # fig.tight_layout()
@@ -429,10 +438,9 @@ if __name__ == "__main__":
     df = pd.read_csv('hydrogibs/test/fluvial/profile.csv')
     section = Section(
         df['Dist. cumulée [m]'],
-        df['Altitude [m s.m.]'][::-1],
+        df['Altitude [m s.m.]'],
         K=33,
         i=0.12/100
     )
     with plt.style.context('ggplot'):
-        # Diagramme conventionnel
         section.plot(show=True)
