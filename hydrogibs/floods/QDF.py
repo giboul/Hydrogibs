@@ -5,11 +5,11 @@ from matplotlib import pyplot as plt
 from .constants import QDFcoefs_mean, QDFcoefs_threshold
 from warnings import warn
 from scipy.optimize import least_squares
-from os.path import join, dirname
+from pathlib import Path
 
 
 def _arange_QDFcoefs(path):
-    with open(join(dirname(__file__), path)) as file:
+    with open(Path(__file__).parent / path) as file:
         data = [
             line.split(',')
             for line in file.read().splitlines()[1:]
