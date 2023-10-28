@@ -293,8 +293,12 @@ class Section:
         )
         self.data["h"] = self.data.z - self.data.z.min()
 
-        self.interpolate_h_from_Q = interp1d(self.data.Q, self.data.h)
-        self.interpolate_Q_from_h = interp1d(self.data.h, self.data.Q)
+        k = 'linear'
+        i = self.data.drop_duplicates('Q')
+        self.interpolate_h_from_Q = interp1d(i.Q, i.h, kind=k)
+        self.interpolate_Q = interp1d(i.h, i.Q, kind=k)
+        self.interpolate_S = interp1d(i.h, i.S, kind=k)
+        self.interpolate_P = interp1d(i.h, i.P, kind=k)
 
         self.zsorteddata = self.data.sort_values("z")
         x, z, h, Q, S, P = self.zsorteddata[
