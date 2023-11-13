@@ -1,7 +1,6 @@
 from typing import Iterable, Tuple
 import numpy as np
 import pandas as pd
-from scipy.interpolate import interp1d
 from matplotlib import pyplot as plt
 
 
@@ -293,14 +292,7 @@ class Section:
         )
         self.data["h"] = self.data.z - self.data.z.min()
 
-        k = 'linear'
-        i = self.data.drop_duplicates('Q')
-        self.interpolate_h_from_Q = interp1d(i.Q, i.h, kind=k)
-        self.interpolate_Q = interp1d(i.h, i.Q, kind=k)
-        self.interpolate_S = interp1d(i.h, i.S, kind=k)
-        self.interpolate_P = interp1d(i.h, i.P, kind=k)
-
-        self.zsorteddata = self.data.sort_values("z")
+        self.zsorteddata = self.data.sort_values("z").drop_duplicates('h')
         x, z, h, Q, S, P = self.zsorteddata[
             ["x", "z", "h", "Q", "S", "P"]
         ][self.zsorteddata.P > 0].to_numpy().T
@@ -326,6 +318,9 @@ class Section:
             self.critical_data.Q < self.data.Q.max()
         ]
 
+        self.zsorteddata["dP"] = np.diff(self.zsorteddata.P, prepend=0)
+        self.zsorteddata["dS"] = np.diff(self.zsorteddata.S, prepend=0)
+
         mask = np.isclose(dh_dS, 0)
         Fr = (Q[mask]**2/g/S[mask]**3/dh_dS[mask])
         if not np.isclose(Fr[~np.isnan(Fr)], 1, atol=10**-3).all():
@@ -339,11 +334,49 @@ class Section:
     def z(self):
         return self.data.z
 
-    def Q(self, h: float):
-        return self.interpolate_Q_from_h(h)
+    @property
+    def h(self):
+        return self.data.h
 
-    def h(self, Q: float):
-        return self.interpolate_h_from_Q(Q)
+    @property
+    def P(self):
+        return self.data.P
+
+    @property
+    def S(self):
+        return self.data.S
+
+    @property
+    def Rh(self):
+        return self.data.Rh
+
+    @property
+    def Q(self):
+        return self.data.Q
+
+    def interp_Rh(self, h_interp: float) -> float:
+
+        h, P, S = self.zsorteddata[["h", "P", "S"]].to_numpy().T
+
+        mask = h >= h_interp
+        if mask.all():
+            S[-1] / P[-1]
+        if not mask.any():
+            return 0, 0
+
+        argsup = mask.argmax()
+        arginf = argsup - 1
+        r = (h_interp - h[arginf]) / (h[argsup] - h[arginf])
+        s = S[arginf] + r * (S[argsup] - S[arginf])
+        p = P[arginf] + r * (P[argsup] - P[arginf])
+
+        return s, p
+
+    def interp_Q(self, h: float) -> float:
+        s, p = self.interp_Rh(h)
+        if p == 0:
+            return 0
+        return s * GMS(self.K, s/p, self.i)
 
     def plot(self, h: float = None,
              fig=None, ax0=None, ax1=None, show=False):
@@ -412,13 +445,13 @@ class Section:
             self.critical_data.h,
             '-.', label='$y_{cr}$ (hauteur critique)')
         ax1.set_xlabel('Débit [m$^3$/s]')
-        ax1.set_ylabel('Profondeur [m]')
+        ax1.set_ylabel("Hauteur d'eau [m]")
         ax0.grid(False)
 
         # plotting 'RG' & 'RD'
         x01 = (1-0.05)*self.rawdata.x.min() + 0.05*self.rawdata.x.max()
         x09 = (1-0.95)*self.rawdata.x.min() + 0.95*self.rawdata.x.max()
-        ztxt = 1.2*self.rawdata.z.mean()
+        ztxt = self.rawdata.z.mean()
         ax0.text(x01, ztxt, 'RG')
         ax0.text(x09, ztxt, 'RD')
 
@@ -433,7 +466,7 @@ class Section:
         # showing
         # fig.tight_layout()
         if show:
-            return plt.show()
+            plt.show()
         return fig, ax0, ax1
 
 
