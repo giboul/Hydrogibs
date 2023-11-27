@@ -1,13 +1,25 @@
 from typing import Iterable, Tuple
+from pathlib import Path
 import numpy as np
 import pandas as pd
 from matplotlib import pyplot as plt
+import matplotlib as mpl
 
 
 if __name__ == "__main__":
     from hydrogibs.constants import g
 else:
     from ..constants import g
+
+
+def _new_df(sort_key='x', **kwargs):
+    """
+    Just for creating and sorting arrays faster and safer
+    thx pandas
+    """
+    return pd.DataFrame(
+        zip(*kwargs.values()), columns=[*kwargs.keys()]
+    ).sort_values(sort_key)
 
 
 def find_roots(
@@ -191,12 +203,21 @@ def polygon_properties(
     mask = z_arr <= z
     length = 0
     surface = 0
-    for x1, x2, z1, z2 in zip(x_arr[:-1], x_arr[1:], z_arr[:-1], z_arr[1:]):
-        if z1 <= z and z2 <= z:
-            length += np.sqrt((x2-x1)**2 + (z2-z1)**2)
-            surface += (z - (z2+z1)/2) * (x2-x1)
+    width = 0
+    ###
+    mask = (z_arr[1:] <= z) & (z_arr[:-1] <= z)
+    dz = np.diff(z_arr)[mask]
+    dx = np.diff(x_arr)[mask]
+    zm = (z_arr[:-1] + z_arr[1:])[mask]
+    length = np.sqrt(dx**2 + dz**2).sum()
+    surface = ((z - zm/2) * dx).sum()
+    # for x1, x2, z1, z2 in zip(x_arr[:-1], x_arr[1:], z_arr[:-1], z_arr[1:]):
+    #     if z1 <= z and z2 <= z:
+    #         length += np.sqrt((x2-x1)**2 + (z2-z1)**2)
+    #         surface += (z - (z2+z1)/2) * (x2-x1)
+    #         width += x2 - x1
 
-    return length, surface
+    return length, surface, width
 
 
 class Section:
@@ -237,8 +258,6 @@ class Section:
         self,
         x: Iterable,  # position array from left to right river bank
         z: Iterable,  # altitude array from left to right river bank
-        K: float,  # Manning-Strickler coefficient
-        i: float  # River bed's slope
     ) -> None:
         """
         This object is meant to derive water depth to discharge relations
@@ -256,75 +275,27 @@ class Section:
             slope of the riverbed
         """
 
-        def new_df(x: np.ndarray, z: np.ndarray, sort_key='x', **kwargs):
-            """
-            Just for creating and sorting arrays faster and safer
-            thx pandas
-            """
-            return pd.DataFrame(
-                zip(x, z, *kwargs.values()), columns=["x", "z", *kwargs.keys()]
-            ).sort_values(sort_key)
-
-        self.K = K
-        self.i = i
-
         # 1. Store input data
-        self.rawdata = new_df(x, z)
+        self.rawdata = _new_df(x=x, z=z)
 
         # 2. enhance coordinates
-        self.newdata = new_df(*twin_points(self.rawdata.x, self.rawdata.z))
-        self.data = new_df(
-            np.concatenate((self.rawdata.x, self.newdata.x)),
-            np.concatenate((self.rawdata.z, self.newdata.z))
+        _x, _z = twin_points(self.rawdata.x, self.rawdata.z)
+        newdata = _new_df(x=_x, z=_z)
+        self.data = _new_df(
+            x=np.concatenate((self.rawdata.x, newdata.x)),
+            z=np.concatenate((self.rawdata.z, newdata.z))
         )
 
         # 3. Reduce left and right boundaries
-        self.data = new_df(*strip_outside_world(self.data.x, self.data.z))
+        _x, _z = strip_outside_world(self.data.x, self.data.z)
+        self.data = _new_df(x=_x, z=_z)
 
-        self.data["P"], self.data["S"] = zip(*[
+        # Compute wet section's properties
+        self.data["P"], self.data["S"], self.data["w"] = zip(*[
             polygon_properties(self.x, self.z, z)
             for z in self.z
         ])
-        self.data["Q"] = self.data.S * GMS(
-            self.K,
-            self.data.S/self.data.P,
-            self.i
-        )
         self.data["h"] = self.data.z - self.data.z.min()
-
-        self.zsorteddata = self.data.sort_values("z").drop_duplicates('h')
-        x, z, h, Q, S, P = self.zsorteddata[
-            ["x", "z", "h", "Q", "S", "P"]
-        ][self.zsorteddata.P > 0].to_numpy().T
-
-        # critical values computing
-        dS = S[2:] - S[:-2]
-        dh = h[2:] - h[:-2]
-        mask = ~np.isclose(dS, 0, atol=1e-10, rtol=.0)
-        dh_dS = np.full_like(x, None)
-        dh_dS[1:-1][mask] = dh[mask]/dS[mask]
-
-        # Q is computed from the derivative of S(h)
-        # to avoid error accumulation with an integral
-        Q = np.sqrt(g*S**3*dh_dS)
-
-        self.critical_data = new_df(x, z, h=h, S=S, P=P, Q=Q, sort_key='h')
-        # remove invalid values
-        self.critical_data = self.critical_data.loc[
-            ~np.isnan(self.critical_data.Q)
-        ]
-        # strip to minimal discharge if fluvial
-        self.critical_data = self.critical_data.loc[
-            self.critical_data.Q < self.data.Q.max()
-        ]
-
-        self.zsorteddata["dP"] = np.diff(self.zsorteddata.P, prepend=0)
-        self.zsorteddata["dS"] = np.diff(self.zsorteddata.S, prepend=0)
-
-        mask = np.isclose(dh_dS, 0)
-        Fr = (Q[mask]**2/g/S[mask]**3/dh_dS[mask])
-        if not np.isclose(Fr[~np.isnan(Fr)], 1, atol=10**-3).all():
-            print("Critical water depths might not be representative")
 
     @property
     def x(self):
@@ -354,29 +325,154 @@ class Section:
     def Q(self):
         return self.data.Q
 
-    def interp_Rh(self, h_interp: float) -> float:
+    def set_GMS_data(self, manning_strickler_coefficient: float, slope: float):
+        """
+        Set the Gauckler-Manning-Strickler discharges to the
+        'data' DataFrame and return the entire DataFrame
+        To get the discharge exclusively, get the 'Q' attribute
 
-        h, P, S = self.zsorteddata[["h", "P", "S"]].to_numpy().T
+        Parameters
+        ----------
+        manning_strickler_coefficient : float
+            As in v = K * Rh * i^0.5
+        slope : float
+            The slope of the energy line
 
-        mask = h >= h_interp
-        if mask.all():
-            S[-1] / P[-1]
-        if not mask.any():
-            return 0, 0
+        Returns
+        -------
+        pandas.DataFrame
+            DataFrame containing all relevant data
+        """
+        self.K = manning_strickler_coefficient
+        self.i = slope
 
-        argsup = mask.argmax()
-        arginf = argsup - 1
-        r = (h_interp - h[arginf]) / (h[argsup] - h[arginf])
-        s = S[arginf] + r * (S[argsup] - S[arginf])
-        p = P[arginf] + r * (P[argsup] - P[arginf])
+        self.data["Q"] = self.data.S * GMS(
+            self.K,
+            self.data.S/self.data.P,
+            self.i
+        )
 
-        return s, p
+        return self
 
-    def interp_Q(self, h: float) -> float:
-        s, p = self.interp_Rh(h)
-        if p == 0:
-            return 0
-        return s * GMS(self.K, s/p, self.i)
+    def set_critical_data(self):
+
+        x, z, h, S, P = self.data[
+            ["x", "z", "h", "S", "P"]
+        ][self.data.P > 0].to_numpy().T
+
+        # critical values computing
+        dS = S[2:] - S[:-2]
+        dh = h[2:] - h[:-2]
+        mask = ~ np.isclose(dS, 0, atol=1e-10, rtol=.0)
+        dh_dS = np.full_like(x, None)
+        dh_dS[1:-1][mask] = dh[mask]/dS[mask]
+
+        # Q is computed from the derivative of S(h)
+        # to avoid error accumulation with an integral
+        Q = np.sqrt(g*S**3*dh_dS)
+
+        self.critical_data = _new_df(x=x, z=z, h=h,
+                                     S=S, P=P, Q=Q,
+                                     sort_key='z')
+        # remove invalid values
+        self.critical_data = self.critical_data.loc[
+            ~np.isnan(Q) | ~ (Q == 0)
+        ]
+
+        mask = np.isclose(dh_dS, 0)
+        Fr = (Q[mask]**2/g/S[mask]**3/dh_dS[mask])
+        if not np.isclose(Fr[~np.isnan(Fr)], 1, atol=10**-3).all():
+            print("Critical water depths might not be representative")
+
+        return self
+
+    def set_speeds(self, speeds):
+
+        x, z = self.rawdata.to_numpy().T
+
+        w = np.diff(x)
+        h = np.array([
+            (h2+h1)/2 for h2, h1 in zip(z[1:], z[:-1])
+        ])
+        v = np.array([
+            (v2+v1)/2
+            for v2, v1 in zip(speeds[1:], speeds[:-1])
+        ])
+        q = w * h * v
+
+        self.rawdata["qi"] = np.hstack(([0], q))
+        self.rawdata["wi"] = np.hstack(([0], w))
+        self.rawdata["hi"] = np.hstack(([0], h))
+        self.rawdata["vi"] = np.hstack(([0], v))
+
+        q = np.hstack(([0], q))
+
+        return self
+
+    def interp_P(self, h_array: np.ndarray) -> float:  # TODO !!!
+
+        h_array = np.asarray(h_array)
+
+        h, P = self.data[
+            ["h", "P"]
+        ].sort_values("h").drop_duplicates("h").to_numpy().T
+
+        p = np.zeros_like(h_array)
+        for i, h_interp in enumerate(h_array):
+            # Checking if its within range
+            mask = h >= h_interp
+            if mask.all():
+                p[i] = 0
+                continue
+            if not mask.any():
+                p[i] = P[-1]
+
+            # Find upper and lower bounds
+            argsup = mask.argmax()
+            arginf = argsup - 1
+            # interpolate
+            r = (h_interp - h[arginf]) / (h[argsup] - h[arginf])
+            p[i] = P[arginf] + r * (P[argsup] - P[arginf])
+
+        return p
+
+    def interp_S(self, h_array: np.ndarray) -> float:  # TODO !!!
+
+        h_array = np.asarray(h_array)
+
+        h, w, S = self.data[
+            ["h", "w", "S"]
+        ].sort_values("h").drop_duplicates("h").to_numpy().T
+
+        s = np.zeros_like(h_array)
+        for i, h_interp in enumerate(h_array):
+            # Checking if its within range
+            mask = h >= h_interp
+            if mask.all():
+                s[i] = 0
+                continue
+            if not mask.any():
+                s[i] = S[-1]
+
+            # Find lower and upper bounds
+            argsup = mask.argmax()
+            arginf = argsup - 1
+            # interpolate
+            r = (h_interp - h[arginf]) / (h[argsup] - h[arginf])
+            wi = r * (w[argsup] - w[arginf]) + w[arginf]
+            ds = (h_interp - h[arginf]) * (wi + w[arginf])/2
+            s[i] = S[arginf] + ds
+
+        return s
+
+    def interp_Q(self, h_array: float) -> float:
+        h = np.asarray(h_array)
+        S = self.interp_S(h)
+        P = self.interp_P(h)
+        Q = np.zeros_like(h)
+        mask = ~np.isclose(P, 0)
+        Q[mask] = S[mask] * GMS(self.K, S[mask]/P[mask], self.i)
+        return Q
 
     def plot(self, h: float = None,
              fig=None, ax0=None, ax1=None, show=False):
@@ -438,12 +534,13 @@ class Section:
         ax0.yaxis.set_label_position('right')
 
         # plotting water depths
-        ax1.plot(self.zsorteddata.Q, self.zsorteddata.h, '--',
-                 label="$y_0$ (hauteur d'eau)")
-        ax1.plot(
-            self.critical_data.Q,
-            self.critical_data.h,
-            '-.', label='$y_{cr}$ (hauteur critique)')
+        if "Q" in self.data:
+            df = self.data.sort_values('z')
+            ax1.plot(df.Q, df.h, '--b',
+                     label="$y_0$ (hauteur d'eau)")
+        if hasattr(self, "critical_data"):
+            ax1.plot(self.critical_data.Q, self.critical_data.h,
+                     '-.', label='$y_{cr}$ (hauteur critique)')
         ax1.set_xlabel('Débit [m$^3$/s]')
         ax1.set_ylabel("Hauteur d'eau [m]")
         ax0.grid(False)
@@ -469,15 +566,89 @@ class Section:
             plt.show()
         return fig, ax0, ax1
 
+    def plot_terrain_data(self, ax=None, **subplotkwargs):
 
-if __name__ == "__main__":
+        ax = ax or plt.subplot(**subplotkwargs)
 
-    df = pd.read_csv('hydrogibs/test/fluvial/profile.csv')
+        position, profondeur, vitesse = self.rawdata[["x", "z", "vi"]].to_numpy().T
+
+        xp = position[0]
+        hp = profondeur[0]
+        vp = vitesse[0]
+        vmin = min(vitesse)
+        vmax = max(vitesse)
+
+        cmap = plt.get_cmap('Blues')
+        for x, h, v in zip(position[1:], profondeur[1:], vitesse[1:]):
+            c = cmap((v-vmin)/(vmax-vmin))
+            ax.fill((xp, x, x, xp), (0, 0, h, hp),
+                    color=c,
+                    edgecolor=c)
+            xp, hp, vp = x, h, v
+
+        norm = mpl.colors.Normalize(vmin=vmin, vmax=vmax)
+        sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
+        # sm.set_array([])
+        cb = plt.colorbar(sm, ax=ax, aspect=7)
+        # plt.plot(position, profondeur, '-o', c='k', mfc='w', mew=2, ms=5)
+        ax.invert_yaxis()
+
+        return ax, cb
+
+
+DIR = Path(__file__).parent
+
+
+def test_Section():
+
+    df = pd.read_csv(DIR / 'profile.csv')
     section = Section(
         df['Dist. cumulée [m]'],
         df['Altitude [m s.m.]'],
-        K=33,
-        i=0.12/100
-    )
+    ).set_critical_data().set_GMS_data(33, 0.12/100)
     with plt.style.context('ggplot'):
         section.plot(show=True)
+    
+    h = np.linspace(section.h.min(), section.h.max(), 1000)
+    df = pd.DataFrame(
+        zip(h, section.interp_S(h), section.interp_P(h), section.interp_Q(h)),
+        columns=('h', 'S', 'P', 'Q')
+    )
+    df.to_csv(DIR / 'hydraulic_data.csv', index=False)
+
+
+def test_measures():
+
+    with plt.style.context("ggplot"):
+        DIRo = Path("/home/axel/Documents/EPFL/Eco Morhpologie/")
+        for type in ("naturel", "artificiel"):
+            for i in range(1, 5):
+                sheet = f"{type[:3]}{i}"
+                name = f"{type} {i}"
+                fig = plt.figure(figsize=(6, 2.5))
+                df = pd.read_excel(DIR / 'Mesures.xlsx', sheet_name=sheet).fillna(0)
+                section = Section(x=df.position-df.position.min(), z=df.profondeur)
+                ax, cb = section.set_speeds(df.vitesse).plot_terrain_data()
+                ax.set_facecolor('none')
+                cb.set_label("Vitesse [m/s]")
+                ax.set_xlabel("Position [m]")
+                ax.set_ylabel("Profondeur [cm]")
+                hi, vi = section.rawdata[["hi", "vi"]].to_numpy().T
+                hvar = np.std(hi)/hi.mean()
+                vvar = np.std(vi)/vi.mean()
+                ax.set_title(# f"Tronçon {name}\n"
+                             # f"$\sigma_h={hsig:.0f}$ cm"
+                             # "   "
+                             # f"$\sigma_v={vsig:.0f}$ cm/s\n"
+                             f" $CV_{{v}}={vvar:.2f}$"
+                             "   "
+                             f" $CV_{{h}}={hvar:.2f}$")
+                plt.tight_layout()
+                plt.savefig(DIRo / f"section_mesure_{sheet}.pdf", bbox_inches="tight")
+                fig.show()
+        plt.show()
+
+
+if __name__ == "__main__":
+    # test_measures()
+    test_Section()
