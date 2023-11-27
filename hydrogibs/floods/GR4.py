@@ -2,10 +2,9 @@ import numpy as np
 from matplotlib import pyplot as plt
 from typing import Callable
 from dataclasses import dataclass
-from warnings import warn
 from datetime import datetime
 from matplotlib.dates import DateFormatter
-from os.path import join, dirname
+from pathlib import Path
 
 
 r"""
@@ -186,7 +185,7 @@ def gr4(catchment: Catchment, rain: Rain, volume_check=False) -> Event:
     dt = np.diff(time, append=2*time[-1]-time[-2])  # h
 
     # integral(rainfall)dt >= initial abstraction
-    abstraction = np.cumsum(dP)*dt < X2
+    abstraction = np.cumsum(dP)*dt <= X2
 
     # Removing the initial abstraction from the rainfall
     dP_effective = dP.copy()
@@ -201,19 +200,29 @@ def gr4(catchment: Catchment, rain: Rain, volume_check=False) -> Event:
     )
 
     # Water flows
-    dTp = X1*dP_effective  # due to runoff
-    dTv = X3*V  # due to volume emptying
+    dR = X1*dP_effective  # due to runoff
+    dH = X3*V  # due to volume emptying
 
     # transfer function as array
     q = catchment.transfer_function(X4, num=(time <= 2*X4).sum())
+    if q.size < 3:
+        print(
+            f"GR4 Warning: transfer function is {q=}\n"
+            f"It has only {(time <= 2*X4).sum() = } values"
+        )
 
-    Qp = S * np.convolve(dTp, q)[:time.size] * dt / 3.6
-    Qv = S * np.convolve(dTv, q)[:time.size] * dt / 3.6
+    QR = S * np.convolve(dR, q, 'full')[:time.size] * dt / 3.6
+    # ax1 = plt.subplot()
+    # ax1.plot(time, dTp)
+    # ax2 = ax1.twinx()
+    # ax2.plot(time, Qp)
+    # plt.show()
+    QH = S * np.convolve(dH, q, 'full')[:time.size] * dt / 3.6
 
-    Vtot = np.trapz(x=time, y=Qp + Qv)*3600
-    Ptot = np.trapz(x=time, y=dP)*S*1000
-    X2v = X2*S*1000 if (~abstraction).any() else Ptot
     if volume_check:
+        Vtot = np.trapz(x=time, y=QR + QH)*3600
+        Ptot = np.trapz(x=time, y=dP)*S*1000
+        X2v = X2*S*1000 if (~abstraction).any() else Ptot
         print(
             "\n"
             f"Stored volume: {Vtot + X2v:.2e}\n"
@@ -222,10 +231,10 @@ def gr4(catchment: Catchment, rain: Rain, volume_check=False) -> Event:
             f"Precipitation volume: {Ptot:.2e}"
         )
 
-    return Event(rain.time, dP, V, dTp+dTv, Qp, Qv, Qp+Qv)
+    return Event(rain.time, dP, V, dR+dH, QR, QH, QR+QH)
 
 
-with open(join(dirname(__file__), 'GR4.csv')) as file:
+with open(Path(__file__).parent/'GR4.csv') as file:
     """
     Creating the presets such that:
     >>> GR4presetsPresets[preset] = (X1, X2, X3)
@@ -603,6 +612,7 @@ def test(plot=False, app=False, datetime=False):
         time = df.Date
 
     rain = Rain(time, rainfall)
+    rain = BlockRain(I0, t0)
     catchment = Catchment(X1, X2, X3, X4, surface=1.8)
 
     event = rain @ catchment
@@ -611,10 +621,6 @@ def test(plot=False, app=False, datetime=False):
         Qax, Pax, Vax = event.diagram(show=False).axes
         Pax.set_title("Rimbaud")
         plt.show()
-
-    # rain = GR4.BlockRain(I0, t0)
-    catchment = PresetCatchment('Laval')
-    event = rain @ catchment
 
     if app:
         App(catchment, rain)
