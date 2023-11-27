@@ -11,5 +11,6 @@ Christophe Ancey's website https://en.ancey.ch/.
 from .floods import QDF, GR4, SoCoSe
 from .floods.RationalMethod import rational_method
 from .fluvial.canal import Section
+from .fluvial.shields import shields_diagram
 from .extreme.yearly_maxima import YearlyMaxima
 from .misc.misc import Ressaut, crupedix
