@@ -1,6 +1,7 @@
 from typing import Iterable, Tuple
 from pathlib import Path
 import numpy as np
+from scipy.interpolate import interp1d
 import pandas as pd
 from matplotlib import pyplot as plt
 import matplotlib as mpl
@@ -26,7 +27,7 @@ def find_roots(
     x: Iterable,
     y: Iterable,
     eps: float = 1e-5
-) -> np.ndarray[float]:
+) -> np.ndarray:
     """
     Function for quickly finding the roots from an array with
     an interpolation (to avoid non-horizontal water tables)
@@ -96,7 +97,7 @@ def twin_points(x_arr: np.ndarray, z_arr: np.ndarray) -> Tuple[np.ndarray]:
         x_intersection = find_roots(x_arr, z_arr - z)
         if x_intersection.size:
             # remove trivial answer to avoid duplicate
-            x_intersection = x_intersection[x_intersection != x]
+            x_intersection = x_intersection[~np.isclose(x_intersection, x, 1e-3)]
             new_x = np.concatenate((new_x, x_intersection))
             new_z = np.concatenate((new_z, np.full_like(x_intersection, z)))
 
@@ -200,17 +201,13 @@ def polygon_properties(
     x_arr = np.asarray(x_arr)
     z_arr = np.asarray(z_arr)
 
-    mask = z_arr <= z
-    length = 0
-    surface = 0
-    width = 0
-    ###
     mask = (z_arr[1:] <= z) & (z_arr[:-1] <= z)
     dz = np.diff(z_arr)[mask]
     dx = np.diff(x_arr)[mask]
     zm = (z_arr[:-1] + z_arr[1:])[mask]
     length = np.sqrt(dx**2 + dz**2).sum()
     surface = ((z - zm/2) * dx).sum()
+    width = dx.sum()
     # for x1, x2, z1, z2 in zip(x_arr[:-1], x_arr[1:], z_arr[:-1], z_arr[1:]):
     #     if z1 <= z and z2 <= z:
     #         length += np.sqrt((x2-x1)**2 + (z2-z1)**2)
@@ -258,6 +255,7 @@ class Section:
         self,
         x: Iterable,  # position array from left to right river bank
         z: Iterable,  # altitude array from left to right river bank
+        process=True,  # Directly compute hydraulic properties
     ) -> None:
         """
         This object is meant to derive water depth to discharge relations
@@ -278,6 +276,11 @@ class Section:
         # 1. Store input data
         self.rawdata = _new_df(x=x, z=z)
 
+        if process:
+            self.preprocess().compute_geometry().set_critical_data()
+
+    def preprocess(self):
+
         # 2. enhance coordinates
         _x, _z = twin_points(self.rawdata.x, self.rawdata.z)
         newdata = _new_df(x=_x, z=_z)
@@ -290,12 +293,18 @@ class Section:
         _x, _z = strip_outside_world(self.data.x, self.data.z)
         self.data = _new_df(x=_x, z=_z)
 
+        return self
+    
+    def compute_geometry(self):
+
         # Compute wet section's properties
-        self.data["P"], self.data["S"], self.data["w"] = zip(*[
+        self.data["P"], self.data["S"], self.data["B"] = zip(*[
             polygon_properties(self.x, self.z, z)
             for z in self.z
         ])
         self.data["h"] = self.data.z - self.data.z.min()
+
+        return self
 
     @property
     def x(self):
@@ -375,9 +384,7 @@ class Section:
                                      S=S, P=P, Q=Q,
                                      sort_key='z')
         # remove invalid values
-        self.critical_data = self.critical_data.loc[
-            ~np.isnan(Q) | ~ (Q == 0)
-        ]
+        self.critical_data = self.critical_data.dropna()
 
         mask = np.isclose(dh_dS, 0)
         Fr = (Q[mask]**2/g/S[mask]**3/dh_dS[mask])
@@ -409,39 +416,18 @@ class Section:
 
         return self
 
+    def interp_B(self, h_array):
+        return interp1d(self.data.h, self.data.B)(h_array)
+
     def interp_P(self, h_array: np.ndarray) -> float:  # TODO !!!
-
-        h_array = np.asarray(h_array)
-
-        h, P = self.data[
-            ["h", "P"]
-        ].sort_values("h").drop_duplicates("h").to_numpy().T
-
-        p = np.zeros_like(h_array)
-        for i, h_interp in enumerate(h_array):
-            # Checking if its within range
-            mask = h >= h_interp
-            if mask.all():
-                p[i] = 0
-                continue
-            if not mask.any():
-                p[i] = P[-1]
-
-            # Find upper and lower bounds
-            argsup = mask.argmax()
-            arginf = argsup - 1
-            # interpolate
-            r = (h_interp - h[arginf]) / (h[argsup] - h[arginf])
-            p[i] = P[arginf] + r * (P[argsup] - P[arginf])
-
-        return p
+        return interp1d(self.section.h, self.data.P)(h_array)
 
     def interp_S(self, h_array: np.ndarray) -> float:  # TODO !!!
 
         h_array = np.asarray(h_array)
 
         h, w, S = self.data[
-            ["h", "w", "S"]
+            ["h", "B", "S"]
         ].sort_values("h").drop_duplicates("h").to_numpy().T
 
         s = np.zeros_like(h_array)
@@ -491,6 +477,7 @@ class Section:
         Returns
         -------
         pyplot figure
+            figure containing plots
         pyplot axis
             profile coordinates transversal position vs. elevation
         pyplot axis
@@ -564,7 +551,7 @@ class Section:
         # fig.tight_layout()
         if show:
             plt.show()
-        return fig, ax0, ax1
+        return fig, (ax0, ax1)
 
     def plot_terrain_data(self, ax=None, **subplotkwargs):
 
@@ -605,7 +592,7 @@ def test_Section():
     section = Section(
         df['Dist. cumulée [m]'],
         df['Altitude [m s.m.]'],
-    ).set_critical_data().set_GMS_data(33, 0.12/100)
+    ).set_GMS_data(33, 0.12/100)
     with plt.style.context('ggplot'):
         section.plot(show=True)
     
@@ -647,8 +634,10 @@ def test_measures():
                 plt.savefig(DIRo / f"section_mesure_{sheet}.pdf", bbox_inches="tight")
                 fig.show()
         plt.show()
+        return section
 
 
 if __name__ == "__main__":
     # test_measures()
-    test_Section()
+    section = test_Section()
+    plt.plot()
