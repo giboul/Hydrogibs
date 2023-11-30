@@ -20,7 +20,7 @@ It contains:
 """
 
 
-@dataclass(slots=True)
+@dataclass
 class Rain:
     """
     Rain object to apply to a Catchment object.
@@ -55,7 +55,7 @@ class Rain:
         return gr4(rain=self, catchment=catchment)
 
 
-@dataclass(slots=True)
+@dataclass
 class BlockRain:
     r"""
     A constant rain with a limited duration.
@@ -115,7 +115,7 @@ def _transfer_func(X4: float, num: int) -> np.ndarray:
     return f
 
 
-@dataclass(slots=True)
+@dataclass
 class Catchment:
     """
     Stores GR4h catchment parameters.
@@ -148,7 +148,7 @@ class Catchment:
         return rain @ self
 
 
-@dataclass(slots=True)
+@dataclass
 class Event:
     """
     Stores relevant results of a GR4h calculation
