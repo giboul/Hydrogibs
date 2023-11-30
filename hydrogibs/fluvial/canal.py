@@ -416,13 +416,13 @@ class Section:
 
         return self
 
-    def interp_B(self, h_array):
+    def interp_B(self, h_array: np.ndarray) -> float:
         return interp1d(self.data.h, self.data.B)(h_array)
 
-    def interp_P(self, h_array: np.ndarray) -> float:  # TODO !!!
-        return interp1d(self.section.h, self.data.P)(h_array)
+    def interp_P(self, h_array: np.ndarray) -> float:
+        return interp1d(self.data.h, self.data.P)(h_array)
 
-    def interp_S(self, h_array: np.ndarray) -> float:  # TODO !!!
+    def interp_S(self, h_array: np.ndarray) -> float:
 
         h_array = np.asarray(h_array)
 
@@ -595,7 +595,9 @@ def test_Section():
     ).set_GMS_data(33, 0.12/100)
     with plt.style.context('ggplot'):
         section.plot(show=True)
-    
+    plt.plot(h:=np.linspace(1, 3, 1000), section.interp_B(h))
+    plt.show()
+
     h = np.linspace(section.h.min(), section.h.max(), 1000)
     df = pd.DataFrame(
         zip(h, section.interp_S(h), section.interp_P(h), section.interp_Q(h)),
