@@ -35,6 +35,7 @@ def shields_diagram(diameters, hydraulic_radii, slope,
                     show=True,
                     fig=None,
                     axes=None,
+                    plot_frontier=True,
                     **plot_kwargs):
 
     Rh = np.asarray(hydraulic_radii)
@@ -43,36 +44,37 @@ def shields_diagram(diameters, hydraulic_radii, slope,
         fig = plt.gcf()
     if axes is None:
         axes = fig.subplots(ncols=2, gridspec_kw=dict(wspace=0))
+    if diameter_labels is None:
+        diameter_labels = [None for _ in diameters]
     ax1, ax2 = axes
 
-    # ax1.set_prop_cycle(None)
-    # ax2.set_prop_cycle(None)
+    if plot_frontier:
+        l, = ax1.plot(shields.reynolds, shields.shear, label="Limite")
+        ax2.plot(vanrijn.diameter, vanrijn.shear, label="Limite", color=l.get_color())
 
     for d, dlab in zip(diameters, diameter_labels):
         shear = rho*g*Rh*slope
         r = reynolds(np.sqrt(shear/rho), d)
         s = adimensional_shear(shear, d, rho_s)
         d = adimensional_diameter(d, rho_s)
-        ax1.plot(r, s, label=dlab, **plot_kwargs)
+        if dlab is not None:
+            ax1.plot(r, s, label=dlab, **plot_kwargs)
+        else:
+            ax1.plot(r, s, **plot_kwargs)
         ax2.plot(np.full_like(s, d), s, **plot_kwargs)
-
-    # ax1.set_prop_cycle(None)
-    # ax2.set_prop_cycle(None)
-
-    ax1.plot(shields.reynolds, shields.shear)
-    ax2.plot(vanrijn.diameter, vanrijn.shear)
 
     ax1.loglog()
     ax2.loglog()
 
+    ax1.set_title("Diagramme de Shields")
     ax1.set_xlabel(r"Reynolds $R=u_\ast d/\nu$")
     ax1.set_ylabel("Cisaillement critique adimensionnel\n"r"$\Theta=\tau/(\rho g[s-1]d)$")
+
+    ax2.set_title("Selon Van Rijn")
     ax2.yaxis.tick_right()
     ax2.yaxis.set_label_position('right')
     ax2.set_xlabel(r"Diamètre adimentionnel $d_\ast=d\cdot\sqrt[3]{(s-1)g/\nu^2}$")
     ax2.set_ylabel("Cisaillement critique adimensionnel\n"r"$\Theta=\tau/(\rho g[s-1]d)$")
-    ax1.set_title("Diagramme de Shields")
-    ax2.set_title("Selon Van Rijn")
 
     if diameter_labels is not None:
         ax1.legend()
@@ -96,5 +98,5 @@ if __name__ == "__main__":
                             grains["Diamètre des grains [cm]"])
     d16, d50, d90 = granulometry((16, 50, 90))
     shields_diagram((d16/100, d50/100, d90/100),
-                    hdata.S/hdata.P, lope=0.12/100,
+                    hdata.S/hdata.P, slope=0.12/100,
                     diameter_labels=("$d_{16}$", "$d_{50}$", "$d_{90}$", ))
