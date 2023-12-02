@@ -208,11 +208,6 @@ def polygon_properties(
     length = np.sqrt(dx**2 + dz**2).sum()
     surface = ((z - zm/2) * dx).sum()
     width = dx.sum()
-    # for x1, x2, z1, z2 in zip(x_arr[:-1], x_arr[1:], z_arr[:-1], z_arr[1:]):
-    #     if z1 <= z and z2 <= z:
-    #         length += np.sqrt((x2-x1)**2 + (z2-z1)**2)
-    #         surface += (z - (z2+z1)/2) * (x2-x1)
-    #         width += x2 - x1
 
     return length, surface, width
 
@@ -277,7 +272,7 @@ class Section:
         self.rawdata = _new_df(x=x, z=z)
 
         if process:
-            self.preprocess().compute_geometry().set_critical_data()
+            self.preprocess().compute_geometry().compute_critical_data()
 
     def preprocess(self):
 
@@ -287,7 +282,7 @@ class Section:
         self.data = _new_df(
             x=np.concatenate((self.rawdata.x, newdata.x)),
             z=np.concatenate((self.rawdata.z, newdata.z))
-        )
+        ).drop_duplicates("x")
 
         # 3. Reduce left and right boundaries
         _x, _z = strip_outside_world(self.data.x, self.data.z)
@@ -334,7 +329,7 @@ class Section:
     def Q(self):
         return self.data.Q
 
-    def set_GMS_data(self, manning_strickler_coefficient: float, slope: float):
+    def compute_GMS_data(self, manning_strickler_coefficient: float, slope: float):
         """
         Set the Gauckler-Manning-Strickler discharges to the
         'data' DataFrame and return the entire DataFrame
@@ -363,7 +358,7 @@ class Section:
 
         return self
 
-    def set_critical_data(self):
+    def compute_critical_data(self):
 
         x, z, h, S, P = self.data[
             ["x", "z", "h", "S", "P"]
@@ -451,6 +446,35 @@ class Section:
 
         return s
 
+    # def interp_S_from_Q(self, Q_array: np.ndarray) -> float:
+
+    #     Q_array = np.asarray(Q_array)
+
+    #     Q, w, S = self.data[
+    #         ["Q", "B", "S"]
+    #     ].sort_values("Q").drop_duplicates("Q").to_numpy().T
+
+    #     s = np.zeros_like(Q_array)
+    #     for i, Q_interp in enumerate(Q_array):
+    #         # Checking if its within range
+    #         mask = Q >= Q_interp
+    #         if mask.all():
+    #             s[i] = 0
+    #             continue
+    #         if not mask.any():
+    #             s[i] = S[-1]
+
+    #         # Find lower and upper bounds
+    #         arginf = mask.size - mask[::-1].argmin()
+    #         argsup = arginf + 1
+    #         # interpolate
+    #         r = (Q_interp - Q[arginf]) / (Q[argsup] - Q[arginf])
+    #         wi = r * (w[argsup] - w[arginf]) + w[arginf]
+    #         ds = (Q_interp - Q[arginf]) * (wi + w[arginf])/2
+    #         s[i] = S[arginf] + ds
+
+    #     return ...
+
     def interp_Q(self, h_array: float) -> float:
         h = np.asarray(h_array)
         S = self.interp_S(h)
@@ -459,6 +483,9 @@ class Section:
         mask = ~np.isclose(P, 0)
         Q[mask] = S[mask] * GMS(self.K, S[mask]/P[mask], self.i)
         return Q
+
+    def interp_h(self, Q_array: float) -> float:
+        return ...
 
     def plot(self, h: float = None,
              fig=None, ax0=None, ax1=None, show=False):
@@ -592,11 +619,9 @@ def test_Section():
     section = Section(
         df['Dist. cumulée [m]'],
         df['Altitude [m s.m.]'],
-    ).set_GMS_data(33, 0.12/100)
+    ).compute_GMS_data(33, 0.12/100)
     with plt.style.context('ggplot'):
         section.plot(show=True)
-    plt.plot(h:=np.linspace(1, 3, 1000), section.interp_B(h))
-    plt.show()
 
     h = np.linspace(section.h.min(), section.h.max(), 1000)
     df = pd.DataFrame(

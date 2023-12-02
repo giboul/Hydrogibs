@@ -49,8 +49,8 @@ def shields_diagram(diameters, hydraulic_radii, slope,
     ax1, ax2 = axes
 
     if plot_frontier:
-        l, = ax1.plot(shields.reynolds, shields.shear, label="Limite")
-        ax2.plot(vanrijn.diameter, vanrijn.shear, label="Limite", color=l.get_color())
+        ax1.plot(shields.reynolds, shields.shear)
+        ax2.plot(vanrijn.diameter, vanrijn.shear)
 
     for d, dlab in zip(diameters, diameter_labels):
         shear = rho*g*Rh*slope
