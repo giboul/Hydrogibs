@@ -7,20 +7,18 @@ from matplotlib import pyplot as plt
 import matplotlib as mpl
 
 
-if __name__ == "__main__":
-    from hydrogibs.constants import g
-else:
+try:
     from ..constants import g
+except ImportError:
+    from hydrogibs.constants import g
 
 
-def _new_df(sort_key='x', **kwargs):
+def _df(key='x', **kwargs):
     """
     Just for creating and sorting arrays faster and safer
     thx pandas
     """
-    return pd.DataFrame(
-        zip(*kwargs.values()), columns=[*kwargs.keys()]
-    ).sort_values(sort_key)
+    return pd.DataFrame.from_dict(kwargs).sort_values(key)
 
 
 def find_roots(
@@ -68,7 +66,7 @@ def GMS(K: float, Rh: float, i: float) -> float:
     return K * Rh**(2/3) * i**0.5
 
 
-def twin_points(x_arr: np.ndarray, z_arr: np.ndarray) -> Tuple[np.ndarray]:
+def twin_points(x_arr: Iterable, z_arr: Iterable) -> Tuple[np.ndarray]:
     """
     Duplicates a point to every crossing of its level and the (x, z) curve
 
@@ -104,7 +102,7 @@ def twin_points(x_arr: np.ndarray, z_arr: np.ndarray) -> Tuple[np.ndarray]:
     return new_x, new_z
 
 
-def strip_outside_world(x: np.ndarray, z: np.ndarray) -> Tuple[np.ndarray]:
+def strip_outside_world(x: Iterable, z: Iterable) -> Tuple[np.ndarray]:
     """
     Returns the same arrays without the excess borders
     (where the flow section width is unknown).
@@ -165,8 +163,8 @@ def strip_outside_world(x: np.ndarray, z: np.ndarray) -> Tuple[np.ndarray]:
 
 
 def polygon_properties(
-    x_arr: np.ndarray,
-    z_arr: np.ndarray,
+    x_arr: Iterable,
+    z_arr: Iterable,
     z: float
 ) -> Tuple[float]:
     """
@@ -197,6 +195,8 @@ def polygon_properties(
         Permimeter of the polygon
     float
         Surface area of the polygon
+    float
+        Length of the water table
     """
     x_arr = np.asarray(x_arr)
     z_arr = np.asarray(z_arr)
@@ -250,49 +250,70 @@ class Section:
         self,
         x: Iterable,  # position array from left to right river bank
         z: Iterable,  # altitude array from left to right river bank
-        process=True,  # Directly compute hydraulic properties
     ) -> None:
         """
         This object is meant to derive water depth to discharge relations
-        and plot them along with the profile in a single diagram
+        and plot them along with the profile in a single diagram.
 
         Parameters
         ----------
         x : Iterable
-            x (transversal) coordinates of the profile
+            x (transversal) coordinates of the profile. 
+            These values will be sorted.
         z : Iterable
-            z (elevation) coordinates of the profile
-        K : float
-            Manning-Strickler coefficient (might add more laws later)
-        i : float
-            slope of the riverbed
+            z (elevation) coordinates of the profile. 
+            It will be sorted according to x.
+        
+        Attributes
+        ----------
+        rawdata : pandas.DataFrame
+            The input x and z values.
+        data : pandas.DataFrame
+            The enahnced and stripped data with 
+            wet perimeter, wet surface and surface width 
+            (also GMS after Section.compute_GMS_data()).
+        critical_data : pd.DataFrame
+            An estimation of the critical depths.
         """
 
         # 1. Store input data
-        self.rawdata = _new_df(x=x, z=z)
-
-        if process:
-            self.preprocess().compute_geometry().compute_critical_data()
+        self.rawdata = _df(x=x, z=z)
+        # 2. enhance and strip coordinates
+        self = self.preprocess()
+        # Compute wet section's properties
+        self = self.compute_geometry()
 
     def preprocess(self):
+        """
+        Ehance the data by duplicating every altitude as many times as
+        it has antecedents in the z(x) interpolation. Then strip the data
+        to points with a defined wet section only.
 
-        # 2. enhance coordinates
+        Sets
+        ----
+        data : pandas.DataFrame
+            enhanced data from section.rawdata
+        """
         _x, _z = twin_points(self.rawdata.x, self.rawdata.z)
-        newdata = _new_df(x=_x, z=_z)
-        self.data = _new_df(
+        newdata = _df(x=_x, z=_z)
+        self.data = _df(
             x=np.concatenate((self.rawdata.x, newdata.x)),
             z=np.concatenate((self.rawdata.z, newdata.z))
         ).drop_duplicates("x")
 
-        # 3. Reduce left and right boundaries
         _x, _z = strip_outside_world(self.data.x, self.data.z)
-        self.data = _new_df(x=_x, z=_z)
+        self.data = _df(x=_x, z=_z)
 
         return self
     
     def compute_geometry(self):
+        """
+        Compute the wet section's perimeter, area and width (and height).
 
-        # Compute wet section's properties
+        Sets
+        ----
+        data[["P", "S", "B", "h"]] : pd.DataFrame
+        """
         self.data["P"], self.data["S"], self.data["B"] = zip(*[
             polygon_properties(self.x, self.z, z)
             for z in self.z
@@ -344,8 +365,9 @@ class Section:
 
         Returns
         -------
-        pandas.DataFrame
-            DataFrame containing all relevant data
+        Section
+            Object containing all relevant data in the
+            "data" (pandas.DataFrame) attribute
         """
         self.K = manning_strickler_coefficient
         self.i = slope
@@ -359,7 +381,15 @@ class Section:
         return self
 
     def compute_critical_data(self):
+        """
+        Compute the critical discharges for every possible water depth.
+        
+        Q = sqrt(g*S^3*dh/dS)
 
+        Sets
+        ----
+        critical_data : pandas.DataFrame
+        """
         x, z, h, S, P = self.data[
             ["x", "z", "h", "S", "P"]
         ][self.data.P > 0].to_numpy().T
@@ -375,21 +405,27 @@ class Section:
         # to avoid error accumulation with an integral
         Q = np.sqrt(g*S**3*dh_dS)
 
-        self.critical_data = _new_df(x=x, z=z, h=h,
-                                     S=S, P=P, Q=Q,
-                                     sort_key='z')
-        # remove invalid values
-        self.critical_data = self.critical_data.dropna()
+        self.critical_data = _df(x=x, z=z, h=h,
+                                 S=S, P=P, Q=Q,
+                                 sort_key='z').dropna()
 
         mask = np.isclose(dh_dS, 0)
         Fr = (Q[mask]**2/g/S[mask]**3/dh_dS[mask])
-        if not np.isclose(Fr[~np.isnan(Fr)], 1, atol=10**-3).all():
+        if not np.isclose(Fr[~np.isnan(Fr)], 1, atol=1e-3).all():
             print("Critical water depths might not be representative")
 
         return self
 
-    def set_speeds(self, speeds):
+    def set_speeds(self, speeds: Iterable):
+        """
+        Compute the mean velocity in-between hydraulic measures.
 
+        Sets
+        ----
+        rawdata[["qi", "wi", "hi", "vi"]] : pandas.DataFrame
+            Respectively the subsection dicharge, width,
+            mean depth and mean velocity.
+        """
         x, z = self.rawdata.to_numpy().T
 
         w = np.diff(x)
@@ -411,14 +447,27 @@ class Section:
 
         return self
 
-    def interp_B(self, h_array: np.ndarray) -> float:
+    def interp_B(self, h_array: Iterable) -> float:
         return interp1d(self.data.h, self.data.B)(h_array)
 
-    def interp_P(self, h_array: np.ndarray) -> float:
+    def interp_P(self, h_array: Iterable) -> float:
         return interp1d(self.data.h, self.data.P)(h_array)
 
-    def interp_S(self, h_array: np.ndarray) -> float:
+    def interp_S(self, h_array: Iterable) -> float:
+        """
+        Quadratic interpolation of the surface. 
+        dS = dh*dB/2 where B is the surface width
 
+        Parameters
+        ----------
+        h_array : Iterable
+            Array of water depths
+        
+        Returns
+        -------
+        np.ndarray
+            The corresponding surface area
+        """
         h_array = np.asarray(h_array)
 
         h, w, S = self.data[
@@ -475,7 +524,21 @@ class Section:
 
     #     return ...
 
-    def interp_Q(self, h_array: float) -> float:
+    def interp_Q(self, h_array: Iterable) -> float:
+        """
+        Interpolate discharge from water depth with
+        the quadratic interpolation of S.
+
+        Parameters
+        ----------
+        h_array : Iterable
+            The water depths array.
+        
+        Returns
+        -------
+        np.ndarray
+            The corresponding discharges
+        """
         h = np.asarray(h_array)
         S = self.interp_S(h)
         P = self.interp_P(h)
@@ -484,8 +547,10 @@ class Section:
         Q[mask] = S[mask] * GMS(self.K, S[mask]/P[mask], self.i)
         return Q
 
-    def interp_h(self, Q_array: float) -> float:
-        return ...
+    def interp_h(self, Q_array: Iterable) -> float:
+        return NotImplementedError(
+            "Yeah I'm not sure how to do this (surjective function)"
+        )
 
     def plot(self, h: float = None,
              fig=None, ax0=None, ax1=None, show=False):
@@ -498,7 +563,7 @@ class Section:
             Water depth of stream cross section to fill
         show : bool
             wether to show figure or not
-        fig, ax0, ax1
+        fig, (ax0, ax1)
             figure and axes on which to draw (ax0: riverberd, ax1: Q(h))
 
         Returns
@@ -581,6 +646,9 @@ class Section:
         return fig, (ax0, ax1)
 
     def plot_terrain_data(self, ax=None, **subplotkwargs):
+        """
+        Plot the mean speeds on the profile with a colorplot.
+        """
 
         ax = ax or plt.subplot(**subplotkwargs)
 
