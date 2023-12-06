@@ -217,6 +217,15 @@ class ShieldsDiagram:
         return linesS + linesVR
 
     def get_subplots(self):
+        """
+        Returns
+        -------
+        matplotlib.pyplot.figure
+        matplotlib.pyplot.Axes
+            Shields diagram
+        matplotlib.pyplot.Axes
+            Van Rijn diagram
+        """
         return self.fig, (self.ax1, self.ax2)
 
 

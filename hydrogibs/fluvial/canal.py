@@ -37,7 +37,7 @@ def find_roots(
 
     Returns
     -------
-    x : np.ndarray
+    np.ndarray
     """
     x = np.asarray(x)
     y = np.asarray(y)
@@ -54,6 +54,8 @@ def GMS(K: float, Rh: float, i: float) -> float:
     """
     The Manning-Strickler equation
 
+    Q = K * S * Rh^(2/3) * sqrt(i)
+
     Parameters
     ----------
     K : float
@@ -62,6 +64,11 @@ def GMS(K: float, Rh: float, i: float) -> float:
         The hydraulic radius, area/perimeter or width
     i : float
         The slope of the riverbed
+    
+    Returns
+    -------
+    float
+        The discharge according to Gauckler-Manning-Strickler
     """
     return K * Rh**(2/3) * i**0.5
 
@@ -72,9 +79,9 @@ def twin_points(x_arr: Iterable, z_arr: Iterable) -> Tuple[np.ndarray]:
 
     Parameters
     ----------
-    x : np.ndarray
+    x : Iterable
         the horizontal coordinates array
-    y : np.ndarray
+    y : Iterable
         the vertical coordinates array
 
     Returns
@@ -182,9 +189,9 @@ def polygon_properties(
 
     Parameters
     ----------
-    x : np.ndarray
+    x : Iterable
         x-coordinates
-    y : np.ndarray
+    y : Iterable
         y-coordinates
     z : float
         The z threshold (water table elevation)
@@ -232,9 +239,22 @@ class Section:
     Properties
     ----------
     x : pd.Series
-        shortcut for self.data.x
+        Shortcut for the enhanced coordinates
+        self.data.x
     z : pd.Series
-        shortcut for self.data.z
+        Shortcut for the enhanced altitudes
+        self.data.z
+    h : pd.Series
+        Shortcut for the enhanced water depths 
+        self.data.z
+    P : pd.Series
+        Shortcut for the wet perimeter
+    S : pd.Series
+        Shortcut for the wet area
+    Rh : pd.Series
+        Shortcut for the hydraulic radius
+    Q : pd.Series
+        Shortcut for the dicharge (GMS)
 
     Methods
     -------
@@ -242,7 +262,7 @@ class Section:
         Plots a matplotlib diagram with the profile,
         the Q-h & Q-h_critical curves and a bonus surface from h
     Q(h: float)
-        Returns an interpolated value of the discharge
+        Returns an interpolated value of the discharge (GMS)
     h(Q: float)
         Returns an interpolated value of the water depth
     """
@@ -289,8 +309,8 @@ class Section:
         it has antecedents in the z(x) interpolation. Then strip the data
         to points with a defined wet section only.
 
-        Sets
-        ----
+        Set attribute
+        -------------
         data : pandas.DataFrame
             enhanced data from section.rawdata
         """
@@ -310,8 +330,8 @@ class Section:
         """
         Compute the wet section's perimeter, area and width (and height).
 
-        Sets
-        ----
+        Sets attribute
+        --------------
         data[["P", "S", "B", "h"]] : pd.DataFrame
         """
         self.data["P"], self.data["S"], self.data["B"] = zip(*[
@@ -363,8 +383,8 @@ class Section:
         slope : float
             The slope of the energy line
 
-        Returns
-        -------
+        Set attribute
+        -------------
         Section
             Object containing all relevant data in the
             "data" (pandas.DataFrame) attribute
@@ -386,8 +406,8 @@ class Section:
         
         Q = sqrt(g*S^3*dh/dS)
 
-        Sets
-        ----
+        Set attribute
+        -------------
         critical_data : pandas.DataFrame
         """
         x, z, h, S, P = self.data[
@@ -420,8 +440,8 @@ class Section:
         """
         Compute the mean velocity in-between hydraulic measures.
 
-        Sets
-        ----
+        Set attribute
+        -------------
         rawdata[["qi", "wi", "hi", "vi"]] : pandas.DataFrame
             Respectively the subsection dicharge, width,
             mean depth and mean velocity.
