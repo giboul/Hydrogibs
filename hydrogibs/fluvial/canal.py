@@ -69,7 +69,7 @@ def GMS(K: float, Rh: float, i: float) -> float:
     return Q
 
 
-def twin_points(x_arr: Iterable, z_arr: Iterable, ix: Iterable) -> Tuple:
+def twin_points(x_arr: Iterable, z_arr: Iterable) -> Tuple:
     """
     Duplicates a point to every crossing of its level and the (x, z) curve
 
@@ -87,10 +87,12 @@ def twin_points(x_arr: Iterable, z_arr: Iterable, ix: Iterable) -> Tuple:
     np.ndarray
         the enhanced y-array
     """
-    x_arr = np.asarray(x_arr)  # so that indexing works properly
+    x_arr = np.asarray(x_arr)
     z_arr = np.asarray(z_arr)
     points = np.vstack((x_arr, z_arr)).T
-    new_x = np.array([])  # to avoid looping over a dynamic array
+
+    # to avoid looping over a dynamic array
+    new_x = np.array([])
     new_z = np.array([])
     new_i = np.array([], dtype=np.int32)
 
@@ -103,13 +105,6 @@ def twin_points(x_arr: Iterable, z_arr: Iterable, ix: Iterable) -> Tuple:
         new_x = np.hstack((new_x, add_x))
         new_z = np.hstack((new_z, add_z))
         new_i = np.hstack((new_i, add_i))
-    # for x, z in zip(x_arr, z_arr):
-    #     x_intersection = find_roots(x_arr, z_arr - z)
-    #     x_intersection = x_intersection[~np.isclose(x_intersection, x, 1e-3)]
-    #     print(f"{x_intersection = }")
-    #     new_x = np.concatenate((new_x, x_intersection))
-    #     new_z = np.concatenate((new_z, np.full_like(x_intersection, z)))
-    #     # new_ix = np.concatenate((new_ix, ix[]))
 
     return np.insert(x_arr, new_i, new_x), np.insert(z_arr, new_i, new_z)
 
@@ -319,10 +314,7 @@ class Section:
         data : pandas.DataFrame
             enhanced data from section.rawdata
         """
-        x, z = twin_points(self.rawdata.x, self.rawdata.z, self.rawdata.index)
-        # fig, ax = plt.subplots()
-        # ax.plot(*_df(x=_x, z=_z).sort_values('x').to_numpy().T, '-o')
-        # fig.show()
+        x, z = twin_points(self.rawdata.x, self.rawdata.z)
         self.data = _df(x=x, z=z)
 
         x, z = strip_outside_world(self.data.x, self.data.z)
@@ -719,7 +711,6 @@ def test_ClosedSection():
     ax2.legend(loc=(0.4, 0.2))
     ax1.legend(loc="upper left").get_frame().set_alpha(1)
     fig.show()
-    # df.to_csv(DIR / 'hydraulic_data.csv', index=False)
 
 
 def test_measures():
