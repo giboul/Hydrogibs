@@ -716,7 +716,8 @@ def test_ClosedSection():
     Q = 33*(S/P)**(2/3)*S*(0.12/100)**0.5
     h = r * (1-np.cos(theta))
     ax2.plot(Q, h, alpha=0.5, label="Théorique")
-    ax2.legend()
+    ax2.legend(loc=(0.4, 0.2))
+    ax1.legend(loc="upper left").get_frame().set_alpha(1)
     fig.show()
     # df.to_csv(DIR / 'hydraulic_data.csv', index=False)
 
