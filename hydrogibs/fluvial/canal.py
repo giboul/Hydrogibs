@@ -7,18 +7,11 @@ from matplotlib import pyplot as plt
 import matplotlib as mpl
 
 
-try:
-    from ..constants import g
-except ImportError:
-    from hydrogibs.constants import g
+g = 9.81
 
 
-def _df(key='x', **kwargs):
-    """
-    Just for creating and sorting arrays faster and safer
-    thx pandas
-    """
-    return pd.DataFrame.from_dict(kwargs).sort_values(key)
+def _df(**kwargs):
+    return pd.DataFrame.from_dict(dict(kwargs))
 
 
 def find_roots(
@@ -70,10 +63,13 @@ def GMS(K: float, Rh: float, i: float) -> float:
     float
         The discharge according to Gauckler-Manning-Strickler
     """
-    return K * Rh**(2/3) * i**0.5
+    Q = np.zeros_like(Rh)
+    mask = Rh > 0
+    Q[mask] = K * Rh[mask]**(2/3) * i**0.5
+    return Q
 
 
-def twin_points(x_arr: Iterable, z_arr: Iterable) -> Tuple[np.ndarray]:
+def twin_points(x_arr: Iterable, z_arr: Iterable, ix: Iterable) -> Tuple:
     """
     Duplicates a point to every crossing of its level and the (x, z) curve
 
@@ -93,20 +89,29 @@ def twin_points(x_arr: Iterable, z_arr: Iterable) -> Tuple[np.ndarray]:
     """
     x_arr = np.asarray(x_arr)  # so that indexing works properly
     z_arr = np.asarray(z_arr)
-    argmin = z_arr.argmin()
-    x_mid = x_arr[argmin]
+    points = np.vstack((x_arr, z_arr)).T
     new_x = np.array([])  # to avoid looping over a dynamic array
     new_z = np.array([])
+    new_i = np.array([], dtype=np.int32)
 
-    for i, (x, z) in enumerate(zip(x_arr, z_arr)):
-        x_intersection = find_roots(x_arr, z_arr - z)
-        if x_intersection.size:
-            # remove trivial answer to avoid duplicate
-            x_intersection = x_intersection[~np.isclose(x_intersection, x, 1e-3)]
-            new_x = np.concatenate((new_x, x_intersection))
-            new_z = np.concatenate((new_z, np.full_like(x_intersection, z)))
+    for i, ((x1, z1), (x2, z2)) in enumerate(zip(points[:-1], points[1:]), start=1):
+        add_z = np.sort(z_arr[(min(z1, z2) < z_arr) & (z_arr < max(z1, z2))])
+        if z2 < z1:
+            add_z = add_z[::-1]
+        add_i = np.full_like(add_z, i, dtype=np.int32)
+        add_x = x1 + (x2 - x1) * (add_z - z1)/(z2 - z1)
+        new_x = np.hstack((new_x, add_x))
+        new_z = np.hstack((new_z, add_z))
+        new_i = np.hstack((new_i, add_i))
+    # for x, z in zip(x_arr, z_arr):
+    #     x_intersection = find_roots(x_arr, z_arr - z)
+    #     x_intersection = x_intersection[~np.isclose(x_intersection, x, 1e-3)]
+    #     print(f"{x_intersection = }")
+    #     new_x = np.concatenate((new_x, x_intersection))
+    #     new_z = np.concatenate((new_z, np.full_like(x_intersection, z)))
+    #     # new_ix = np.concatenate((new_ix, ix[]))
 
-    return new_x, new_z
+    return np.insert(x_arr, new_i, new_x), np.insert(z_arr, new_i, new_z)
 
 
 def strip_outside_world(x: Iterable, z: Iterable) -> Tuple[np.ndarray]:
@@ -151,14 +156,13 @@ def strip_outside_world(x: Iterable, z: Iterable) -> Tuple[np.ndarray]:
     # Highest framed elevation (avoiding sections with undefined borders)
     left_max = z[left].argmax()
     right_max = z[right].argmax() + argmin
-    zmax = min(z[left_max], z[right_max])
 
     # strip left to the highest framed elevation
     candidates = (left & (z <= z[right_max]))[argmin::-1]
     if not candidates.all():
         left_max = argmin - candidates.argmin()+1
 
-    # strip righ to the highest framed elevation
+    # strip right to the highest framed elevation
     candidates = (right & (z <= z[left_max]))[argmin:]
     if not candidates.all():
         right_max = argmin + candidates.argmin()-1
@@ -209,11 +213,12 @@ def polygon_properties(
     z_arr = np.asarray(z_arr)
 
     mask = (z_arr[1:] <= z) & (z_arr[:-1] <= z)
+    zm = (z_arr[:-1] + z_arr[1:])[mask]/2
     dz = np.diff(z_arr)[mask]
     dx = np.diff(x_arr)[mask]
-    zm = (z_arr[:-1] + z_arr[1:])[mask]
+
     length = np.sqrt(dx**2 + dz**2).sum()
-    surface = ((z - zm/2) * dx).sum()
+    surface = np.abs(((z - zm) * dx).sum())
     width = dx.sum()
 
     return length, surface, width
@@ -314,15 +319,14 @@ class Section:
         data : pandas.DataFrame
             enhanced data from section.rawdata
         """
-        _x, _z = twin_points(self.rawdata.x, self.rawdata.z)
-        newdata = _df(x=_x, z=_z)
-        self.data = _df(
-            x=np.concatenate((self.rawdata.x, newdata.x)),
-            z=np.concatenate((self.rawdata.z, newdata.z))
-        ).drop_duplicates("x")
+        x, z = twin_points(self.rawdata.x, self.rawdata.z, self.rawdata.index)
+        # fig, ax = plt.subplots()
+        # ax.plot(*_df(x=_x, z=_z).sort_values('x').to_numpy().T, '-o')
+        # fig.show()
+        self.data = _df(x=x, z=z)
 
-        _x, _z = strip_outside_world(self.data.x, self.data.z)
-        self.data = _df(x=_x, z=_z)
+        x, z = strip_outside_world(self.data.x, self.data.z)
+        self.data = _df(x=x, z=z)
 
         return self
     
@@ -361,6 +365,10 @@ class Section:
     @property
     def S(self):
         return self.data.S
+
+    @property
+    def B(self):
+        return self.data.B
 
     @property
     def Rh(self):
@@ -412,7 +420,7 @@ class Section:
         """
         x, z, h, S, P = self.data[
             ["x", "z", "h", "S", "P"]
-        ][self.data.P > 0].to_numpy().T
+        ][self.data.P > 0].sort_values('z').to_numpy().T
 
         # critical values computing
         dS = S[2:] - S[:-2]
@@ -425,9 +433,10 @@ class Section:
         # to avoid error accumulation with an integral
         Q = np.sqrt(g*S**3*dh_dS)
 
-        self.critical_data = _df(x=x, z=z, h=h,
-                                 S=S, P=P, Q=Q,
-                                 sort_key='z').dropna()
+        self.critical_data = _df(
+            x=x, z=z, h=h,
+            S=S, P=P, Q=Q
+        ).dropna()
 
         mask = np.isclose(dh_dS, 0)
         Fr = (Q[mask]**2/g/S[mask]**3/dh_dS[mask])
@@ -514,35 +523,6 @@ class Section:
             s[i] = S[arginf] + ds
 
         return s
-
-    # def interp_S_from_Q(self, Q_array: np.ndarray) -> float:
-
-    #     Q_array = np.asarray(Q_array)
-
-    #     Q, w, S = self.data[
-    #         ["Q", "B", "S"]
-    #     ].sort_values("Q").drop_duplicates("Q").to_numpy().T
-
-    #     s = np.zeros_like(Q_array)
-    #     for i, Q_interp in enumerate(Q_array):
-    #         # Checking if its within range
-    #         mask = Q >= Q_interp
-    #         if mask.all():
-    #             s[i] = 0
-    #             continue
-    #         if not mask.any():
-    #             s[i] = S[-1]
-
-    #         # Find lower and upper bounds
-    #         arginf = mask.size - mask[::-1].argmin()
-    #         argsup = arginf + 1
-    #         # interpolate
-    #         r = (Q_interp - Q[arginf]) / (Q[argsup] - Q[arginf])
-    #         wi = r * (w[argsup] - w[arginf]) + w[arginf]
-    #         ds = (Q_interp - Q[arginf]) * (wi + w[arginf])/2
-    #         s[i] = S[arginf] + ds
-
-    #     return ...
 
     def interp_Q(self, h_array: Iterable) -> float:
         """
@@ -707,22 +687,43 @@ def test_Section():
     section = Section(
         df['Dist. cumulée [m]'],
         df['Altitude [m s.m.]'],
-    ).compute_GMS_data(33, 0.12/100)
+    ).compute_GMS_data(33, 0.12/100).compute_critical_data()
     with plt.style.context('ggplot'):
-        section.plot(show=True)
+        fig, (ax1, ax2) = section.plot()
+    
+    # h = np.linspace(section.h.min(), section.h.max(), 1000)
+    # df = pd.DataFrame(
+    #     zip(h, section.interp_S(h), section.interp_P(h), section.interp_Q(h)),
+    #     columns=('h', 'S', 'P', 'Q')
+    # )
+    # ax2.plot(df.Q, df.h)
+    fig.show()
 
-    h = np.linspace(section.h.min(), section.h.max(), 1000)
-    df = pd.DataFrame(
-        zip(h, section.interp_S(h), section.interp_P(h), section.interp_Q(h)),
-        columns=('h', 'S', 'P', 'Q')
-    )
+def test_ClosedSection():
+
+    df = pd.read_csv(DIR / 'closedProfile.csv')
+    section = Section(
+        (df.x+1)*10, (df.z+1)*10,
+    ).compute_GMS_data(33, 0.12/100)
+
+    with plt.style.context('ggplot'):
+        fig, (ax1, ax2) = section.plot()
+
+    theta = np.linspace(0, np.pi)
+    r = 10
+    S = theta*r**2 - r**2*np.cos(theta)*np.sin(theta)
+    P = 2*theta*r
+    Q = 33*(S/P)**(2/3)*S*(0.12/100)**0.5
+    h = r * (1-np.cos(theta))
+    ax2.plot(Q, h, alpha=0.5, label="Théorique")
+    ax2.legend()
+    fig.show()
     # df.to_csv(DIR / 'hydraulic_data.csv', index=False)
 
 
 def test_measures():
 
     with plt.style.context("ggplot"):
-        DIRo = Path("/home/axel/Documents/EPFL/Eco Morhpologie/")
         for type in ("naturel", "artificiel"):
             for i in range(1, 5):
                 sheet = f"{type[:3]}{i}"
@@ -746,7 +747,6 @@ def test_measures():
                              "   "
                              f" $CV_{{h}}={hvar:.2f}$")
                 plt.tight_layout()
-                plt.savefig(DIRo / f"section_mesure_{sheet}.pdf", bbox_inches="tight")
                 fig.show()
         plt.show()
         return section
@@ -755,4 +755,6 @@ def test_measures():
 if __name__ == "__main__":
     # test_measures()
     section = test_Section()
-    plt.plot()
+    plt.show()
+    section = test_ClosedSection()
+    plt.show()
