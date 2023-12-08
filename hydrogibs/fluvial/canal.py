@@ -694,23 +694,24 @@ def test_Section():
 def test_ClosedSection():
 
     df = pd.read_csv(DIR / 'closedProfile.csv')
+    r = 10
+    K = 33
+    i = 0.12/100
     section = Section(
-        (df.x+1)*10, (df.z+1)*10,
-    ).compute_GMS_data(33, 0.12/100)
+        (df.x+1)*r, (df.z+1)*r,
+    ).compute_GMS_data(K, i)
 
     with plt.style.context('ggplot'):
         fig, (ax1, ax2) = section.plot()
 
-    theta = np.linspace(0, np.pi)
-    r = 10
-    S = theta*r**2 - r**2*np.cos(theta)*np.sin(theta)
-    P = 2*theta*r
-    Q = 33*(S/P)**(2/3)*S*(0.12/100)**0.5
-    h = r * (1-np.cos(theta))
-    ax2.plot(Q, h, alpha=0.5, label="Théorique")
-    ax2.legend(loc=(0.4, 0.2))
-    ax1.legend(loc="upper left").get_frame().set_alpha(1)
-    fig.show()
+        theta = np.linspace(0, np.pi)
+        S = theta*r**2 - r**2*np.cos(theta)*np.sin(theta)
+        P = 2*theta*r
+        Q = K*(S/P)**(2/3)*S*(i)**0.5
+        h = r * (1-np.cos(theta))
+        ax2.plot(Q, h, alpha=0.5, label="Théorique")
+        ax2.legend(loc=(0.4, 0.2)).get_frame().set_alpha(1)
+        fig.show()
 
 
 def test_measures():
