@@ -14,35 +14,6 @@ def _df(**kwargs):
     return pd.DataFrame.from_dict(dict(kwargs))
 
 
-def find_roots(
-    x: Iterable,
-    y: Iterable,
-    eps: float = 1e-5
-) -> np.ndarray:
-    """
-    Function for quickly finding the roots from an array with
-    an interpolation (to avoid non-horizontal water tables)
-
-    Parameters
-    ----------
-    x : Iterable
-    y : Iterable
-
-    Returns
-    -------
-    np.ndarray
-    """
-    x = np.asarray(x)
-    y = np.asarray(y)
-
-    x_zeros = x[y == 0]
-    y[np.isclose(y, 0, atol=eps, rtol=0)] = -eps
-    s = np.abs(np.diff(np.sign(y))).astype(bool)
-    x_roots = x[:-1][s] + np.diff(x)[s]/(np.abs(y[1:][s]/y[:-1][s])+1)
-
-    return np.concatenate((x_zeros, x_roots))
-
-
 def GMS(K: float, Rh: float, i: float) -> float:
     """
     The Manning-Strickler equation
@@ -682,7 +653,8 @@ def test_Section():
     ).compute_GMS_data(33, 0.12/100).compute_critical_data()
     with plt.style.context('ggplot'):
         fig, (ax1, ax2) = section.plot()
-    
+
+    # # Quadratic nterpolation 
     # h = np.linspace(section.h.min(), section.h.max(), 1000)
     # df = pd.DataFrame(
     #     zip(h, section.interp_S(h), section.interp_P(h), section.interp_Q(h)),
@@ -704,7 +676,7 @@ def test_ClosedSection():
     with plt.style.context('ggplot'):
         fig, (ax1, ax2) = section.plot()
 
-        theta = np.linspace(0, np.pi)
+        theta = np.linspace(1e-3, np.pi)
         S = theta*r**2 - r**2*np.cos(theta)*np.sin(theta)
         P = 2*theta*r
         Q = K*(S/P)**(2/3)*S*(i)**0.5
