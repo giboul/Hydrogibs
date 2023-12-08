@@ -39,6 +39,10 @@ A block rain (rainfall = intensity if t < duration else 0): `BlockRain(intensity
 
  `App(catchment, rain)`
 
+# Hydraulic profiles
+
+```hydrogibs.fluvial.canal.Section(x_array, z_array).plot()```
+
 # Example file
 
 `example.ipynb` might help you get the hang of this package
