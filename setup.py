@@ -6,7 +6,7 @@ with open("README.md", "r") as f:
 
 setup(
     name="hydrogibs",
-    version="0.0.75",
+    version="0.0.80",
     description="A personal hydrology and hydraulics package"
                 " based on Christophe Ancey and Giovanni De Cesare's teaching: "
                 "http://fr.ancey.ch/cours/masterGC/cours-hydraulique.pdf",
@@ -17,6 +17,6 @@ setup(
     author="giboul",
     author_email="axel.giboulot@epfl.ch",
     license="MIT",
-    install_requires=["numpy", "scipy"],
+    install_requires=["numpy", "scipy", "matplotlib"],
     python_requires=">=3.7",
 )
