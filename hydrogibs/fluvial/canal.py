@@ -202,7 +202,7 @@ class Section:
         DataFrame containing given x and z coordinates
     newdata : pd.DataFrame
         DataFrame with more points
-    data : pd.DataFrame
+    df : pd.DataFrame
         concatenation of rawdata & newdata
     K : float
         Manning-Strickler coefficient
@@ -261,11 +261,17 @@ class Section:
         ----------
         rawdata : pandas.DataFrame
             The input x and z values.
-        data : pandas.DataFrame
+        df : pandas.DataFrame (after Section.preprocess())
             The enahnced and stripped data with 
             wet perimeter, wet surface and surface width 
             (also GMS after Section.compute_GMS_data() 
             and critical discharge after Section.compute_critical_data()).
+        x : x-coordinates (after Section.preprocess())
+        z : z-coordinates (after Section.preprocess())
+        P : wet perimeter
+        S : wet surface
+        B : dry perimeter
+        h : water depth
         """
 
         # 1. Store input data
@@ -283,13 +289,15 @@ class Section:
 
         Set attribute
         -------------
-        data : pandas.DataFrame
+        df : pandas.DataFrame
             enhanced data from section.rawdata
+        x : x-coorinates
+        z : elevation
         """
 
         x, z = strip_outside_world(self.rawdata.x, self.rawdata.z)
         x, z = twin_points(x, z)
-        self.data = _df(x=x, z=z)
+        self.df = _df(x=x, z=z)
 
         return self
     
@@ -299,20 +307,23 @@ class Section:
 
         Set attribute
         -------------
-        data[["P", "S", "B", "h"]] : pd.DataFrame
+        P : wet perimeter
+        S : wet surface
+        B : dry perimeter
+        h : water depth
         """
-        self.data["P"], self.data["S"], self.data["B"] = zip(*[
+        self.df["P"], self.df["S"], self.df["B"] = zip(*[
             polygon_properties(self.x, self.z, z)
             for z in self.z
         ])
-        self.data["h"] = self.data.z - self.data.z.min()
+        self.df["h"] = self.df.z - self.df.z.min()
 
         return self
 
     def compute_GMS_data(self, manning_strickler_coefficient: float, slope: float):
         """
         Set the Gauckler-Manning-Strickler discharges to the
-        'data' DataFrame and return the entire DataFrame
+        'df' DataFrame and return the entire DataFrame
         To get the discharge exclusively, get the 'Q' attribute
 
         Parameters
@@ -326,13 +337,13 @@ class Section:
         -------------
         Section
             Object containing all relevant data in the
-            "data" (pandas.DataFrame) attribute
+            "df" (pandas.DataFrame) attribute
         """
         self.K = manning_strickler_coefficient
         self.i = slope
-
-        self.data["v"] = GMS(self.K, self.data.S/self.data.P, self.i)
-        self.data["Q"] = self.data.S * self.data.v
+    
+        self.df["v"] = GMS(self.K, self.S/self.P, self.i)
+        self.df["Q"] = self.S * self.v
 
         return self
 
@@ -344,54 +355,58 @@ class Section:
 
         Set attribute
         -------------
-        data.Qcr : The critical discharges
+        Qcr : The critical discharges
         """
         # dS / dh = B
-        self.data["Qcr"] = np.sqrt(g*self.S**3/self.data.B)
+        self.df["Qcr"] = np.sqrt(g*self.S**3/self.B)
 
         return self
 
     @property
     def x(self):
-        return self.data.x
+        return self.df.x
 
     @property
     def z(self):
-        return self.data.z
+        return self.df.z
 
     @property
     def h(self):
-        return self.data.h
+        return self.df.h
 
     @property
     def P(self):
-        return self.data.P
+        return self.df.P
 
     @property
     def S(self):
-        return self.data.S
+        return self.df.S
 
     @property
     def B(self):
-        return self.data.B
+        return self.df.B
 
     @property
     def Rh(self):
-        return self.data.Rh
+        return self.df.Rh
+
+    @property
+    def v(self):
+        return self.df.v
 
     @property
     def Q(self):
-        return self.data.Q
+        return self.df.Q
 
     @property
     def Qcr(self):
-        return self.data.Qcr
+        return self.df.Qcr
 
     def interp_B(self, h_array: Iterable) -> np.ndarray:
-        return interp1d(self.data.h, self.data.B)(h_array)
+        return interp1d(self.h, self.B)(h_array)
 
     def interp_P(self, h_array: Iterable) -> np.ndarray:
-        return interp1d(self.data.h, self.data.P)(h_array)
+        return interp1d(self.h, self.P)(h_array)
 
     def interp_S(self, h_array: Iterable) -> np.ndarray:
         """
@@ -410,7 +425,7 @@ class Section:
         """
         h_array = np.asarray(h_array)
 
-        h, w, S = self.data[
+        h, w, S = self.df[
             ["h", "B", "S"]
         ].sort_values("h").drop_duplicates("h").to_numpy().T
 
@@ -509,7 +524,7 @@ class Section:
 
         # bonus wet section example
         if h is not None:
-            poly_data = self.data[self.data.z <= h + self.data.z.min()]
+            poly_data = self.df[self.df.z <= h + self.df.z.min()]
             polygon, = ax0.fill(
                 poly_data.x, poly_data.z,
                 linewidth=0,
@@ -527,11 +542,11 @@ class Section:
         ax0.yaxis.set_label_position('right')
 
         # plotting water depths
-        df = self.data.dropna().sort_values('Qcr')
-        if "Qcr" in self.data:
+        df = self.df.dropna().sort_values('Qcr')
+        if "Qcr" in df:
             ax1.plot(df.Qcr, df.h, '-.', label='$y_{cr}$ (hauteur critique)')
-        df = self.data.sort_values('z')
-        if "Q" in self.data:
+        df = self.df.sort_values('z')
+        if "Q" in df:
             ax1.plot(df.Q, df.h, '--b', label="$y_0$ (hauteur d'eau)")
         ax1.set_xlabel('Débit [m$^3$/s]')
         ax1.set_ylabel("Hauteur d'eau [m]")
@@ -571,8 +586,8 @@ def test_Section():
     ).compute_GMS_data(33, 0.12/100).compute_critical_data()
     with plt.style.context('ggplot'):
         fig, (ax1, ax2) = section.plot()
-        ax2.dataLim.x1 = section.Q.max()
-        ax2.autoscale_view()
+        # ax2.dataLim.x1 = section.Q.max()
+        # ax2.autoscale_view()
         # # Quadratic interpolation
         # h = np.linspace(section.h.min(), section.h.max(), 1000)
         # ax2.plot(section.interp_Qcr(h), h)
