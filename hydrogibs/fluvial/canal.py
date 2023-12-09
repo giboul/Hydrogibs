@@ -4,7 +4,6 @@ import numpy as np
 from scipy.interpolate import interp1d
 import pandas as pd
 from matplotlib import pyplot as plt
-import matplotlib as mpl
 
 
 g = 9.81
@@ -310,42 +309,6 @@ class Section:
 
         return self
 
-    @property
-    def x(self):
-        return self.data.x
-
-    @property
-    def z(self):
-        return self.data.z
-
-    @property
-    def h(self):
-        return self.data.h
-
-    @property
-    def P(self):
-        return self.data.P
-
-    @property
-    def S(self):
-        return self.data.S
-
-    @property
-    def B(self):
-        return self.data.B
-
-    @property
-    def Rh(self):
-        return self.data.Rh
-
-    @property
-    def Q(self):
-        return self.data.Q
-
-    @property
-    def Qcr(self):
-        return self.data.Qcr
-
     def compute_GMS_data(self, manning_strickler_coefficient: float, slope: float):
         """
         Set the Gauckler-Manning-Strickler discharges to the
@@ -383,52 +346,54 @@ class Section:
         -------------
         data.Qcr : The critical discharges
         """
-
-        # dS / dh = dB/2
-        B = self.data.B
-        dh_dS = 2/(B[1:] + B[:-1])
-        self.data["Qcr"] = np.sqrt(g*self.S**3*dh_dS)
+        # dS / dh = B
+        self.data["Qcr"] = np.sqrt(g*self.S**3/self.data.B)
 
         return self
 
-    def set_speeds(self, speeds: Iterable):
-        """
-        Compute the mean velocity in-between hydraulic measures.
+    @property
+    def x(self):
+        return self.data.x
 
-        Set attribute
-        -------------
-        rawdata[["qi", "wi", "hi", "vi"]] : pandas.DataFrame
-            Respectively the subsection dicharge, width,
-            mean depth and mean velocity.
-        """
-        x, z = self.rawdata.to_numpy().T
+    @property
+    def z(self):
+        return self.data.z
 
-        w = np.diff(x)
-        h = np.array([
-            (h2+h1)/2 for h2, h1 in zip(z[1:], z[:-1])
-        ])
-        v = np.array([
-            (v2+v1)/2
-            for v2, v1 in zip(speeds[1:], speeds[:-1])
-        ])
-        q = w * h * v
+    @property
+    def h(self):
+        return self.data.h
 
-        self.rawdata["qi"] = np.hstack(([0], q))
-        self.rawdata["wi"] = np.hstack(([0], w))
-        self.rawdata["hi"] = np.hstack(([0], h))
-        self.rawdata["vi"] = np.hstack(([0], v))
+    @property
+    def P(self):
+        return self.data.P
 
-        q = np.hstack(([0], q))
+    @property
+    def S(self):
+        return self.data.S
 
-        return self
+    @property
+    def B(self):
+        return self.data.B
 
-    def interp_B(self, h_array: Iterable) -> float:
+    @property
+    def Rh(self):
+        return self.data.Rh
+
+    @property
+    def Q(self):
+        return self.data.Q
+
+    @property
+    def Qcr(self):
+        return self.data.Qcr
+
+    def interp_B(self, h_array: Iterable) -> np.ndarray:
         return interp1d(self.data.h, self.data.B)(h_array)
 
-    def interp_P(self, h_array: Iterable) -> float:
+    def interp_P(self, h_array: Iterable) -> np.ndarray:
         return interp1d(self.data.h, self.data.P)(h_array)
 
-    def interp_S(self, h_array: Iterable) -> float:
+    def interp_S(self, h_array: Iterable) -> np.ndarray:
         """
         Quadratic interpolation of the surface. 
         dS = dh*dB/2 where B is the surface width
@@ -469,8 +434,11 @@ class Section:
             s[i] = S[arginf] + ds
 
         return s
+    
+    def interp_Qcr(self, h_array: Iterable) -> np.ndarray:
+        return np.sqrt(g*self.interp_S(h_array)**3/self.interp_B(h_array))
 
-    def interp_Q(self, h_array: Iterable) -> float:
+    def interp_Q(self, h_array: Iterable) -> np.ndarray:
         """
         Interpolate discharge from water depth with
         the quadratic interpolation of S.
@@ -493,7 +461,7 @@ class Section:
         Q[mask] = S[mask] * GMS(self.K, S[mask]/P[mask], self.i)
         return Q
 
-    def interp_h(self, Q_array: Iterable) -> float:
+    def interp_h(self, Q_array: Iterable) -> np.ndarray:
         return NotImplementedError(
             "Yeah I'm not sure how to do this (surjective function)"
         )
@@ -530,12 +498,12 @@ class Section:
             ax0.patch.set_visible(False)
 
         # plotting input bed coordinates
-        lxz, = ax0.plot(self.rawdata.x, self.rawdata.z,
-                        '-o', color='gray', lw=3,
+        lxz, = ax0.plot(self.rawdata.x, self.rawdata.z, '-o',
+                        color='gray', lw=3, ms=8, mew=1,
                         label='Profil en travers complet')
         # potting framed coordinates (the ones used for computations)
-        ax0.plot(self.x, self.z,
-                 '-ok', mfc='w', lw=3,
+        ax0.plot(self.x, self.z, '-ok',
+                 mfc='w', lw=3, ms=5, mew=1,
                  zorder=lxz.get_zorder(),
                  label='Profil en travers utile')
 
@@ -590,38 +558,6 @@ class Section:
             plt.show()
         return fig, (ax0, ax1)
 
-    def plot_terrain_data(self, ax=None, **subplotkwargs):
-        """
-        Plot the mean speeds on the profile with a colorplot.
-        """
-
-        ax = ax or plt.subplot(**subplotkwargs)
-
-        position, profondeur, vitesse = self.rawdata[["x", "z", "vi"]].to_numpy().T
-
-        xp = position[0]
-        hp = profondeur[0]
-        vp = vitesse[0]
-        vmin = min(vitesse)
-        vmax = max(vitesse)
-
-        cmap = plt.get_cmap('Blues')
-        for x, h, v in zip(position[1:], profondeur[1:], vitesse[1:]):
-            c = cmap((v-vmin)/(vmax-vmin))
-            ax.fill((xp, x, x, xp), (0, 0, h, hp),
-                    color=c,
-                    edgecolor=c)
-            xp, hp, vp = x, h, v
-
-        norm = mpl.colors.Normalize(vmin=vmin, vmax=vmax)
-        sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
-        # sm.set_array([])
-        cb = plt.colorbar(sm, ax=ax, aspect=7)
-        # plt.plot(position, profondeur, '-o', c='k', mfc='w', mew=2, ms=5)
-        ax.invert_yaxis()
-
-        return ax, cb
-
 
 DIR = Path(__file__).parent
 
@@ -636,15 +572,14 @@ def test_Section():
     with plt.style.context('ggplot'):
         fig, (ax1, ax2) = section.plot()
         ax2.dataLim.x1 = section.Q.max()
+        ax2.autoscale_view()
+        # # Quadratic interpolation
+        # h = np.linspace(section.h.min(), section.h.max(), 1000)
+        # ax2.plot(section.interp_Qcr(h), h)
+        # ax2.plot(section.interp_Q(h), h)
+        # ax2.plot(df.Q, df.h)
+        plt.show()
 
-    # # Quadratic interpolation 
-    # h = np.linspace(section.h.min(), section.h.max(), 1000)
-    # df = pd.DataFrame(
-    #     zip(h, section.interp_S(h), section.interp_P(h), section.interp_Q(h)),
-    #     columns=('h', 'S', 'P', 'Q')
-    # )
-    # ax2.plot(df.Q, df.h)
-    fig.show()
 
 def test_ClosedSection():
 
@@ -659,6 +594,7 @@ def test_ClosedSection():
     with plt.style.context('ggplot'):
         fig, (ax1, ax2) = section.plot()
         ax2.dataLim.x1 = section.Q.max()
+        ax2.autoscale_view()
 
         theta = np.linspace(1e-10, np.pi)
         S = theta*r**2 - r**2*np.cos(theta)*np.sin(theta)
@@ -668,43 +604,14 @@ def test_ClosedSection():
         ax2.plot(Q, h, alpha=0.5, label="$y_0$ (analytique)")
         ax1.legend(loc="upper left").remove()
         ax2.legend(loc=(0.2, 0.6)).get_frame().set_alpha(1)
-        fig.show()
-
-
-def test_measures():
-
-    with plt.style.context("ggplot"):
-        for type in ("naturel", "artificiel"):
-            for i in range(1, 5):
-                sheet = f"{type[:3]}{i}"
-                name = f"{type} {i}"
-                fig = plt.figure(figsize=(6, 2.5))
-                df = pd.read_excel(DIR / 'Mesures.xlsx', sheet_name=sheet).fillna(0)
-                section = Section(x=df.position-df.position.min(), z=df.profondeur)
-                ax, cb = section.set_speeds(df.vitesse).plot_terrain_data()
-                ax.set_facecolor('none')
-                cb.set_label("Vitesse [m/s]")
-                ax.set_xlabel("Position [m]")
-                ax.set_ylabel("Profondeur [cm]")
-                hi, vi = section.rawdata[["hi", "vi"]].to_numpy().T
-                hvar = np.std(hi)/hi.mean()
-                vvar = np.std(vi)/vi.mean()
-                ax.set_title(# f"Tronçon {name}\n"
-                             # f"$\sigma_h={hsig:.0f}$ cm"
-                             # "   "
-                             # f"$\sigma_v={vsig:.0f}$ cm/s\n"
-                             f" $CV_{{v}}={vvar:.2f}$"
-                             "   "
-                             f" $CV_{{h}}={hvar:.2f}$")
-                plt.tight_layout()
-                fig.show()
+        # # Quadratic interpolation
+        # h = np.linspace(section.h.min(), section.h.max(), 1000)
+        # ax2.plot(section.interp_Qcr(h), h)
+        # ax2.plot(section.interp_Q(h), h)
         plt.show()
-        return section
 
 
 if __name__ == "__main__":
     # test_measures()
-    section = test_Section()
-    plt.show()
-    section = test_ClosedSection()
-    plt.show()
+    test_Section()
+    test_ClosedSection()
