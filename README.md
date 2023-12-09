@@ -1,6 +1,6 @@
 # hydrogibs
 
-Small hydrology package created for the sake of a class project with [Christophe Ancey](https://fr.ancey.ch/ "fr.ancey.ch").
+Small hydrology package created for the sake of a class projects with [Christophe Ancey](https://fr.ancey.ch/ "fr.ancey.ch") and Giovanni De Cesare.
 
 The only module that's currently usable is the GR4 model containing:
 
