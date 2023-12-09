@@ -578,7 +578,7 @@ def test_Section():
         # ax2.plot(section.interp_Qcr(h), h)
         # ax2.plot(section.interp_Q(h), h)
         # ax2.plot(df.Q, df.h)
-        plt.show()
+        fig.show()
 
 
 def test_ClosedSection():
@@ -608,10 +608,11 @@ def test_ClosedSection():
         # h = np.linspace(section.h.min(), section.h.max(), 1000)
         # ax2.plot(section.interp_Qcr(h), h)
         # ax2.plot(section.interp_Q(h), h)
-        plt.show()
+        fig.show()
 
 
 if __name__ == "__main__":
     # test_measures()
     test_Section()
     test_ClosedSection()
+    plt.show()
