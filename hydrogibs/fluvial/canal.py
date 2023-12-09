@@ -11,6 +11,7 @@ g = 9.81
 
 
 def _df(**kwargs):
+    """Just to shorten the code"""
     return pd.DataFrame.from_dict(dict(kwargs))
 
 
@@ -29,20 +30,28 @@ def GMS(K: float, Rh: float, i: float) -> float:
     i : float
         The slope of the riverbed
     
-    Returns
-    -------
+    Return
+    ------
     float
         The discharge according to Gauckler-Manning-Strickler
     """
-    Q = np.zeros_like(Rh)
-    mask = Rh > 0
-    Q[mask] = K * Rh[mask]**(2/3) * i**0.5
-    return Q
+    return K * Rh**(2/3) * i**0.5
 
 
 def twin_points(x_arr: Iterable, z_arr: Iterable) -> Tuple:
     """
-    Duplicates a point to every crossing of its level and the (x, z) curve
+    Duplicate an elevation to every crossing of its level and the (x, z) curve.
+    This will make for straight water tables when filtering like this :
+    >>> z_masked = z[z <= z[some_index]]  # array with z[some index] at its borders
+    Thus, making the section properties (S, P, B) easily computable.
+
+    _                          ___
+    /|     _____              ////
+    /|    //////\            /////
+    /o~~~o~~~~~~~o~~~~~~~~~~o/////
+    /|__//////////\        ///////
+    ///////////////\______////////
+    //////////////////////////////
 
     Parameters
     ----------
@@ -51,8 +60,8 @@ def twin_points(x_arr: Iterable, z_arr: Iterable) -> Tuple:
     y : Iterable
         the vertical coordinates array
 
-    Returns
-    -------
+    Return
+    ------
     np.ndarray
         the enhanced x-array
     np.ndarray
@@ -68,27 +77,31 @@ def twin_points(x_arr: Iterable, z_arr: Iterable) -> Tuple:
     new_i = np.array([], dtype=np.int32)
 
     for i, ((x1, z1), (x2, z2)) in enumerate(zip(points[:-1], points[1:]), start=1):
+
         add_z = np.sort(z_arr[(min(z1, z2) < z_arr) & (z_arr < max(z1, z2))])
         if z2 < z1:
-            add_z = add_z[::-1]
+            add_z = add_z[::-1]  # if descending, reverse order
         add_i = np.full_like(add_z, i, dtype=np.int32)
-        add_x = x1 + (x2 - x1) * (add_z - z1)/(z2 - z1)
+        add_x = x1 + (x2 - x1) * (add_z - z1)/(z2 - z1)  # interpolation
+
         new_x = np.hstack((new_x, add_x))
         new_z = np.hstack((new_z, add_z))
         new_i = np.hstack((new_i, add_i))
 
-    return np.insert(x_arr, new_i, new_x), np.insert(z_arr, new_i, new_z)
+    x = np.insert(x_arr, new_i, new_x)
+    z = np.insert(z_arr, new_i, new_z)
+
+    return x, z
 
 
 def strip_outside_world(x: Iterable, z: Iterable) -> Tuple[np.ndarray]:
     """
-    Returns the same arrays without the excess borders
+    Return the same arrays without the excess borders
     (where the flow section width is unknown).
 
     If this is not done, the flow section could extend
     to the sides and mess up the polygon.
 
-    \b
     Example of undefined section:
 
              _
@@ -105,8 +118,8 @@ def strip_outside_world(x: Iterable, z: Iterable) -> Tuple[np.ndarray]:
     z : np.ndarray (1D)
         Elevation array
 
-    Returns
-    -------
+    Return
+    ------
     np.ndarray (1D)
         the stripped x
     np.ndarray(1D)
@@ -145,17 +158,7 @@ def polygon_properties(
     z: float
 ) -> Tuple[float]:
     """
-    Returns the polygon perimeter and area of the formed polygon.
-    Particular attention is needed for the perimeter's calculation:
-
-    \b
-       _     ___           _
-      //\~~~/~~~\~~~~~~~~~//\
-    _////\_// ↑ /\       ////\
-    ///////// ↑ //\_____//////\
-    ///////// ↑ ///////////////\
-              ↑
-    This lenght should not contribute to the perimeter
+    Return the polygon perimeter and area of the formed polygons.
 
     Parameters
     ----------
@@ -166,8 +169,8 @@ def polygon_properties(
     z : float
         The z threshold (water table elevation)
 
-    Returns
-    -------
+    Return
+    ------
     float
         Permimeter of the polygon
     float
@@ -185,7 +188,7 @@ def polygon_properties(
 
     length = np.sqrt(dx**2 + dz**2).sum()
     surface = np.abs(((z - zm) * dx).sum())
-    width = dx.sum()
+    width = np.abs(dx.sum())
 
     return length, surface, width
 
@@ -262,16 +265,15 @@ class Section:
         data : pandas.DataFrame
             The enahnced and stripped data with 
             wet perimeter, wet surface and surface width 
-            (also GMS after Section.compute_GMS_data()).
-        critical_data : pd.DataFrame
-            An estimation of the critical depths.
+            (also GMS after Section.compute_GMS_data() 
+            and critical discharge after Section.compute_critical_data()).
         """
 
         # 1. Store input data
         self.rawdata = _df(x=x, z=z)
         # 2. enhance and strip coordinates
         self = self.preprocess()
-        # Compute wet section's properties
+        # 3. Compute wet section's properties
         self = self.compute_geometry()
 
     def preprocess(self):
@@ -285,10 +287,9 @@ class Section:
         data : pandas.DataFrame
             enhanced data from section.rawdata
         """
-        x, z = twin_points(self.rawdata.x, self.rawdata.z)
-        self.data = _df(x=x, z=z)
 
-        x, z = strip_outside_world(self.data.x, self.data.z)
+        x, z = strip_outside_world(self.rawdata.x, self.rawdata.z)
+        x, z = twin_points(x, z)
         self.data = _df(x=x, z=z)
 
         return self
@@ -297,8 +298,8 @@ class Section:
         """
         Compute the wet section's perimeter, area and width (and height).
 
-        Sets attribute
-        --------------
+        Set attribute
+        -------------
         data[["P", "S", "B", "h"]] : pd.DataFrame
         """
         self.data["P"], self.data["S"], self.data["B"] = zip(*[
@@ -341,6 +342,10 @@ class Section:
     def Q(self):
         return self.data.Q
 
+    @property
+    def Qcr(self):
+        return self.data.Qcr
+
     def compute_GMS_data(self, manning_strickler_coefficient: float, slope: float):
         """
         Set the Gauckler-Manning-Strickler discharges to the
@@ -363,11 +368,8 @@ class Section:
         self.K = manning_strickler_coefficient
         self.i = slope
 
-        self.data["Q"] = self.data.S * GMS(
-            self.K,
-            self.data.S/self.data.P,
-            self.i
-        )
+        self.data["v"] = GMS(self.K, self.data.S/self.data.P, self.i)
+        self.data["Q"] = self.data.S * self.data.v
 
         return self
 
@@ -379,32 +381,13 @@ class Section:
 
         Set attribute
         -------------
-        critical_data : pandas.DataFrame
+        data.Qcr : The critical discharges
         """
-        x, z, h, S, P = self.data[
-            ["x", "z", "h", "S", "P"]
-        ][self.data.P > 0].sort_values('z').to_numpy().T
 
-        # critical values computing
-        dS = S[2:] - S[:-2]
-        dh = h[2:] - h[:-2]
-        mask = ~ np.isclose(dS, 0, atol=1e-10, rtol=.0)
-        dh_dS = np.full_like(x, None)
-        dh_dS[1:-1][mask] = dh[mask]/dS[mask]
-
-        # Q is computed from the derivative of S(h)
-        # to avoid error accumulation with an integral
-        Q = np.sqrt(g*S**3*dh_dS)
-
-        self.critical_data = _df(
-            x=x, z=z, h=h,
-            S=S, P=P, Q=Q
-        ).dropna()
-
-        mask = np.isclose(dh_dS, 0)
-        Fr = (Q[mask]**2/g/S[mask]**3/dh_dS[mask])
-        if not np.isclose(Fr[~np.isnan(Fr)], 1, atol=1e-3).all():
-            print("Critical water depths might not be representative")
+        # dS / dh = dB/2
+        B = self.data.B
+        dh_dS = 2/(B[1:] + B[:-1])
+        self.data["Qcr"] = np.sqrt(g*self.S**3*dh_dS)
 
         return self
 
@@ -576,20 +559,19 @@ class Section:
         ax0.yaxis.set_label_position('right')
 
         # plotting water depths
+        df = self.data.dropna().sort_values('Qcr')
+        if "Qcr" in self.data:
+            ax1.plot(df.Qcr, df.h, '-.', label='$y_{cr}$ (hauteur critique)')
+        df = self.data.sort_values('z')
         if "Q" in self.data:
-            df = self.data.sort_values('z')
-            ax1.plot(df.Q, df.h, '--b',
-                     label="$y_0$ (hauteur d'eau)")
-        if hasattr(self, "critical_data"):
-            ax1.plot(self.critical_data.Q, self.critical_data.h,
-                     '-.', label='$y_{cr}$ (hauteur critique)')
+            ax1.plot(df.Q, df.h, '--b', label="$y_0$ (hauteur d'eau)")
         ax1.set_xlabel('Débit [m$^3$/s]')
         ax1.set_ylabel("Hauteur d'eau [m]")
         ax0.grid(False)
 
         # plotting 'RG' & 'RD'
         x01 = (1-0.05)*self.rawdata.x.min() + 0.05*self.rawdata.x.max()
-        x09 = (1-0.95)*self.rawdata.x.min() + 0.95*self.rawdata.x.max()
+        x09 = (1-0.9)*self.rawdata.x.min() + 0.9*self.rawdata.x.max()
         ztxt = self.rawdata.z.mean()
         ax0.text(x01, ztxt, 'RG')
         ax0.text(x09, ztxt, 'RD')
@@ -653,8 +635,9 @@ def test_Section():
     ).compute_GMS_data(33, 0.12/100).compute_critical_data()
     with plt.style.context('ggplot'):
         fig, (ax1, ax2) = section.plot()
+        ax2.dataLim.x1 = section.Q.max()
 
-    # # Quadratic nterpolation 
+    # # Quadratic interpolation 
     # h = np.linspace(section.h.min(), section.h.max(), 1000)
     # df = pd.DataFrame(
     #     zip(h, section.interp_S(h), section.interp_P(h), section.interp_Q(h)),
@@ -671,18 +654,20 @@ def test_ClosedSection():
     i = 0.12/100
     section = Section(
         (df.x+1)*r, (df.z+1)*r,
-    ).compute_GMS_data(K, i)
+    ).compute_GMS_data(K, i).compute_critical_data()
 
     with plt.style.context('ggplot'):
         fig, (ax1, ax2) = section.plot()
+        ax2.dataLim.x1 = section.Q.max()
 
-        theta = np.linspace(1e-3, np.pi)
+        theta = np.linspace(1e-10, np.pi)
         S = theta*r**2 - r**2*np.cos(theta)*np.sin(theta)
         P = 2*theta*r
         Q = K*(S/P)**(2/3)*S*(i)**0.5
         h = r * (1-np.cos(theta))
-        ax2.plot(Q, h, alpha=0.5, label="Théorique")
-        ax2.legend(loc=(0.4, 0.2)).get_frame().set_alpha(1)
+        ax2.plot(Q, h, alpha=0.5, label="$y_0$ (analytique)")
+        ax1.legend(loc="upper left").remove()
+        ax2.legend(loc=(0.2, 0.6)).get_frame().set_alpha(1)
         fig.show()
 
 
