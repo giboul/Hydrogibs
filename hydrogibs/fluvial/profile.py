@@ -286,8 +286,8 @@ class Profile:
         df : pandas.DataFrame (after Section.preprocess())
             The enahnced and stripped data with 
             wet perimeter, wet surface and surface width 
-            (also GMS after Section.compute_GMS_data() 
-            and critical discharge after Section.compute_critical_data()).
+            (also GMS after Section.GMS() 
+            and critical discharge after Section.critical()).
         x : x-coordinates (after Section.preprocess())
         z : z-coordinates (after Section.preprocess())
         P : wet perimeter
@@ -299,14 +299,14 @@ class Profile:
         # 1. Store input data
         self.rawdata = _df(x=x, z=z)
         # 2. enhance and strip coordinates
-        self = self.preprocess()
+        self.preprocess()
         # 3. Compute wet section's properties
-        self = self.compute_geometry()
+        self.hydraulic_geometry()
         # 4. Compute h_cr-Qcr
-        self = self.compute_critical_data()
+        self.critical()
 
         if K is not None and slope is not None:
-            self = self.compute_GMS_data(K, slope)
+            self.GMS(K, slope)
 
     def preprocess(self):
         """
@@ -326,9 +326,9 @@ class Profile:
         x, z = twin_points(x, z)
         self.df = _df(x=x, z=z)
 
-        return self
+        return x, z
     
-    def compute_geometry(self):
+    def hydraulic_geometry(self):
         """
         Compute the wet section's perimeter, area and width (and height).
 
@@ -339,15 +339,16 @@ class Profile:
         B : dry perimeter
         h : water depth
         """
-        self.df["P"], self.df["S"], self.df["B"] = zip(*[
+        hy_geom = np.array([
             polygon_properties(self.x, self.z, z)
             for z in self.z
-        ])
+        ]).T
+        self.df["P"], self.df["S"], self.df["B"] = hy_geom
         self.df["h"] = self.df.z - self.df.z.min()
 
-        return self
+        return hy_geom
 
-    def compute_GMS_data(self, manning_strickler_coefficient: float, slope: float):
+    def GMS(self, manning_strickler_coefficient: float, slope: float):
         """
         Set the Gauckler-Manning-Strickler discharges to the
         'df' DataFrame and return the entire DataFrame
@@ -368,13 +369,15 @@ class Profile:
         """
         self.K = manning_strickler_coefficient
         self.i = slope
-    
-        self.df["v"] = GMS(self.K, self.S/self.P, self.i)
-        self.df["Q"] = self.S * self.v
 
-        return self
+        v = GMS(self.K, self.S/self.P, self.i)
+        Q = self.S * v
+        self.df["v"] = v
+        self.df["Q"] = Q
 
-    def compute_critical_data(self):
+        return np.array(Q)
+
+    def critical(self):
         """
         Compute the critical discharges for every possible water depth.
         
@@ -385,9 +388,10 @@ class Profile:
         Qcr : The critical discharges
         """
         # dS / dh = B
-        self.df["Qcr"] = np.sqrt(g*self.S**3/self.B)
+        Qcr = np.sqrt(g*self.S**3/self.B)
+        self.df["Qcr"] = Qcr
 
-        return self
+        return np.array(Qcr)
 
     @property
     def x(self):
