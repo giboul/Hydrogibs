@@ -1,4 +1,4 @@
-from typing import Iterable, Tuple
+from typing import Iterable, Tuple, NamedTuple
 from pathlib import Path
 import numpy as np
 from scipy.interpolate import interp1d
@@ -151,11 +151,17 @@ def strip_outside_world(x: Iterable, z: Iterable) -> Tuple[np.ndarray]:
     return x[left | right], z[left | right]
 
 
+class CrossSectionProperties(NamedTuple):
+    wetted_width : float
+    wetted_perimeter : float
+    area : float
+
+
 def polygon_properties(
     x_arr: Iterable,
     z_arr: Iterable,
     z: float
-) -> Tuple[float]:
+) -> CrossSectionProperties:
     """
     Return the polygon perimeter and area of the formed polygons.
 
@@ -189,7 +195,7 @@ def polygon_properties(
     surface = np.abs(((z - zm) * dx).sum())
     width = np.abs(dx.sum())
 
-    return length, surface, width
+    return CrossSectionProperties(length, surface, width)
 
 
 class Section:
