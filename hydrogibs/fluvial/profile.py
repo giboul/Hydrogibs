@@ -575,7 +575,6 @@ def test_ClosedSection():
 
 
 if __name__ == "__main__":
-    # test_measures()
     test_Section()
     test_ClosedSection()
     plt.show()
