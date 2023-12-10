@@ -237,7 +237,9 @@ def main():
     section = Profile(
         df['Dist. cumulée [m]'],
         df['Altitude [m s.m.]'],
-    ).compute_GMS_data(33, 0.12/100)
+        33,
+        12/100
+    )
 
     grains = pd.read_csv("hydrogibs/fluvial/grains.csv")
     granulometry = interp1d(grains["Tamisats [%]"], grains["Diamètre des grains [cm]"])
