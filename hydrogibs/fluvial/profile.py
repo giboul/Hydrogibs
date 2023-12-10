@@ -1,3 +1,15 @@
+"""
+Script for estimating the h-Q relationship from a given profile. 
+The object 'Profile' creates a complete diagram with the .plot() method.
+
+Run script along with the following files to test:
+    - profile.csv
+    - 'closedProfile.csv'
+It will plot two diagrams with :
+    - Limits enclosing the problem
+    - The water_depth-discharge relation
+    - The water_depth-critical_discharge relation
+"""
 from typing import Iterable, Tuple, NamedTuple
 from pathlib import Path
 import numpy as np
@@ -249,6 +261,8 @@ class Profile:
         self,
         x: Iterable,  # position array from left to right river bank
         z: Iterable,  # altitude array from left to right river bank
+        K: float = None,  # The manning-strickler coefficient
+        slope: float = None  # The riverbed's slope
     ) -> None:
         """
         This object is meant to derive water depth to discharge relations
@@ -286,6 +300,11 @@ class Profile:
         self = self.preprocess()
         # 3. Compute wet section's properties
         self = self.compute_geometry()
+        # 4. Compute h_cr-Qcr
+        self = self.compute_critical_data()
+
+        if K is not None and slope is not None:
+            self = self.compute_GMS_data(K, slope)
 
     def preprocess(self):
         """
