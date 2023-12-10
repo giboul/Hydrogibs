@@ -23,11 +23,6 @@ from matplotlib import pyplot as plt
 g = 9.81
 
 
-def _df(**kwargs):
-    """Just to shorten the code"""
-    return pd.DataFrame.from_dict(dict(kwargs))
-
-
 def GMS(K: float, Rh: float, i: float) -> float:
     """
     The Manning-Strickler equation
@@ -126,9 +121,9 @@ def strip_outside_world(x: Iterable, z: Iterable) -> Tuple[np.ndarray]:
 
     Parameters
     ----------
-    x : np.ndarray (1D)
+    x : Iterable
         Position array from left to right
-    z : np.ndarray (1D)
+    z : Iterable
         Elevation array
 
     Return
@@ -148,27 +143,21 @@ def strip_outside_world(x: Iterable, z: Iterable) -> Tuple[np.ndarray]:
     # Highest framed elevation (avoiding profiles with undefined borders)
     left_max = z[left].argmax()
     right_max = z[right].argmax() + argmin
-
-    # strip left to the highest framed elevation
-    candidates = (left & (z <= z[right_max]))[argmin::-1]
-    if not candidates.all():
-        left_max = argmin - candidates.argmin()+1
-
-    # strip right to the highest framed elevation
-    candidates = (right & (z <= z[left_max]))[argmin:]
-    if not candidates.all():
-        right_max = argmin + candidates.argmin()-1
-
+    z_max = min(z[left_max], z[right_max])
     left[:left_max] = False
     right[right_max+1:] = False
+
+    # strip to the highest framed elevation
+    left = left & (z <= z_max)
+    right = right & (z <= z_max)
 
     return x[left | right], z[left | right]
 
 
 class CrossSectionProperties(NamedTuple):
-    wetted_width : float
-    wetted_perimeter : float
-    area : float
+    wetted_width : Iterable[float]
+    wetted_perimeter : Iterable[float]
+    area : Iterable[float]
 
 
 def polygon_properties(
@@ -212,6 +201,135 @@ def polygon_properties(
     return CrossSectionProperties(length, surface, width)
 
 
+def hydraulic_data(x: Iterable, z: Iterable, K: float = None, slope:float = None):
+    """
+    Derive relation between water depth and discharge (Manning-Strickler)
+
+    Parameters
+    ----------
+    x : Iterable
+        x (transversal) coordinates of the profile. 
+        These values will be sorted.
+    z : Iterable
+        z (elevation) coordinates of the profile. 
+        It will be sorted according to x.
+
+    Return
+    ------
+    pandas.DataFrame
+        x : x-coordinates
+        z : z-coordinates
+        P : wet perimeter
+        S : wet surface
+        B : dry perimeter
+        h : water depth
+        Qcr : critical discharge
+        Q : discharge (if GMS computed)
+    """
+    # 1) enhance coordinates
+    x, z = twin_points(x, z)
+    # 2) strip coordinates
+    x, z = strip_outside_world(x, z)
+    # 3) Compute wet section's properties
+    P, S, B = np.transpose([polygon_properties(x, z, zi) for zi in z])
+    h = z - z.min()
+    # 4. Compute h_cr-Qcr
+    Qcr = np.full_like(B, None)
+    mask = B != 0
+    Qcr[mask] = np.sqrt(g*S[mask]**3/B[mask])
+
+    df = dict(x=x, z=z, h=h, P=P, S=S, B=B, Qcr=Qcr)
+
+    if K is not None and slope is not None:
+        Rh = np.full_like(P, None)
+        v = np.full_like(P, None)
+        mask = P != 0
+        Rh[mask] = S[mask] / P[mask]
+        v[mask] = GMS(K, Rh[mask], slope)
+        Q = S * v
+        df = df | dict(v=v, Q=Q)
+
+    return pd.DataFrame.from_dict(df)
+
+
+def profile_diagram(
+        x: Iterable,
+        z: Iterable,
+        h: Iterable,
+        Q: Iterable,
+        Qcr: Iterable,
+        fig=None,
+        axes=None):
+    """
+    Plot riverbed cross section and Q(h) in a sigle figure
+
+    Parameters
+    ----------
+    h : float
+        Water depth of stream cross section to fill
+    show : bool
+        wether to show figure or not
+    fig, (ax0, ax1)
+        figure and axes on which to draw (ax0: riverberd, ax1: Q(h))
+
+    Returns
+    -------
+    pyplot figure
+        figure containing plots
+    pyplot axis
+        profile coordinates transversal position vs. elevation
+    pyplot axis
+        discharge vs. water depth
+    """
+    if fig is None:
+        fig = plt.figure()
+    if axes is None:
+        ax1 = fig.add_subplot()
+        ax0 = fig.add_subplot()
+        ax0.patch.set_visible(False)
+    
+    x = np.array(x)
+    z = np.array(z)
+    h = np.array(h)
+    Q = np.array(Q)
+    Qcr = np.array(Qcr)
+
+    l1, = ax0.plot(x, z, '-ok',
+                   mfc='w', lw=3, ms=5, mew=1,
+                   label='Profil en travers utile')
+
+    ax0.set_xlabel('Distance profil [m]')
+    ax0.set_ylabel('Altitude [m.s.m.]')
+
+    # positionning axis labels on right and top
+    ax0.xaxis.tick_top()
+    ax0.xaxis.set_label_position('top')
+    ax0.yaxis.tick_right()
+    ax0.yaxis.set_label_position('right')
+
+    # plotting water depths
+    ix = h.argsort()  # simply a sorting index
+    l2, = ax1.plot(Q[ix], h[ix], '--b', label="$y_0$ (hauteur d'eau)")
+    l3, = ax1.plot(Qcr[ix], h[ix], '-.', label='$y_{cr}$ (hauteur critique)')
+    ax1.set_xlabel('Débit [m$^3$/s]')
+    ax1.set_ylabel("Hauteur d'eau [m]")
+    ax0.grid(False)
+
+    # plotting 'RG' & 'RD'
+    ztxt = z.mean()
+    ax0.text(x.min(), ztxt, 'RG')
+    ax0.text(x.max(), ztxt, 'RD', ha='right')
+
+    # match height and altitude ylims
+    ax1.set_ylim(ax0.get_ylim() - z.min())
+
+    # common legend for both axes
+    lines = (l1, l2, l3)
+    labels = [line.get_label() for line in lines]
+    ax0.legend(lines, labels)
+
+    return fig, (ax0, ax1)
+
 class Profile:
     """
     An object storing and plotting hydraulic data about the given cross-section
@@ -254,10 +372,9 @@ class Profile:
     plot(h: float = None)
         Plots a matplotlib diagram with the profile,
         the Q-h & Q-h_critical curves and a bonus surface from h
-    Q(h: float)
+    interp_Q(h: Iterable)
         Returns an interpolated value of the discharge (GMS)
-    h(Q: float)
-        Returns an interpolated value of the water depth
+    interp_h(h: Iterable)
     """
     def __init__(
         self,
@@ -266,132 +383,13 @@ class Profile:
         K: float = None,  # The manning-strickler coefficient
         slope: float = None  # The riverbed's slope
     ) -> None:
-        """
-        This object is meant to derive water depth to discharge relations
-        and plot them along with the profile in a single diagram.
+        """Set rawdata DataFrame, K, slope and 
+        call :func:`~hydraulic_data(x, z, K, slope)` """
 
-        Parameters
-        ----------
-        x : Iterable
-            x (transversal) coordinates of the profile. 
-            These values will be sorted.
-        z : Iterable
-            z (elevation) coordinates of the profile. 
-            It will be sorted according to x.
-        
-        Attributes
-        ----------
-        rawdata : pandas.DataFrame
-            The input x and z values.
-        df : pandas.DataFrame (after Section.preprocess())
-            The enahnced and stripped data with 
-            wet perimeter, wet surface and surface width 
-            (also GMS after Section.GMS() 
-            and critical discharge after Section.critical()).
-        x : x-coordinates (after Section.preprocess())
-        z : z-coordinates (after Section.preprocess())
-        P : wet perimeter
-        S : wet surface
-        B : dry perimeter
-        h : water depth
-        """
-
-        # 1. Store input data
-        self.rawdata = _df(x=x, z=z)
-        # 2. enhance and strip coordinates
-        self.preprocess()
-        # 3. Compute wet section's properties
-        self.hydraulic_geometry()
-        # 4. Compute h_cr-Qcr
-        self.critical()
-
-        if K is not None and slope is not None:
-            self.GMS(K, slope)
-
-    def preprocess(self):
-        """
-        Ehance the data by duplicating every altitude as many times as
-        it has antecedents in the z(x) interpolation. Then strip the data
-        to points with a defined wet section only.
-
-        Set attribute
-        -------------
-        df : pandas.DataFrame
-            enhanced data from profile.rawdata
-        x : x-coorinates
-        z : elevation
-        """
-
-        x, z = strip_outside_world(self.rawdata.x, self.rawdata.z)
-        x, z = twin_points(x, z)
-        self.df = _df(x=x, z=z)
-
-        return x, z
-    
-    def hydraulic_geometry(self):
-        """
-        Compute the wet section's perimeter, area and width (and height).
-
-        Set attribute
-        -------------
-        P : wet perimeter
-        S : wet surface
-        B : dry perimeter
-        h : water depth
-        """
-        hy_geom = np.array([
-            polygon_properties(self.x, self.z, z)
-            for z in self.z
-        ]).T
-        self.df["P"], self.df["S"], self.df["B"] = hy_geom
-        self.df["h"] = self.df.z - self.df.z.min()
-
-        return hy_geom
-
-    def GMS(self, manning_strickler_coefficient: float, slope: float):
-        """
-        Set the Gauckler-Manning-Strickler discharges to the
-        'df' DataFrame and return the entire DataFrame
-        To get the discharge exclusively, get the 'Q' attribute
-
-        Parameters
-        ----------
-        manning_strickler_coefficient : float
-            As in v = K * Rh * i^0.5
-        slope : float
-            The slope of the energy line
-
-        Set attribute
-        -------------
-        Section
-            Object containing all relevant data in the
-            "df" (pandas.DataFrame) attribute
-        """
-        self.K = manning_strickler_coefficient
+        self.rawdata = pd.DataFrame(zip(x, z), columns=["x", "z"])
+        self.df = hydraulic_data(x, z, K, slope)
+        self.K = K
         self.i = slope
-
-        v = GMS(self.K, self.S/self.P, self.i)
-        Q = self.S * v
-        self.df["v"] = v
-        self.df["Q"] = Q
-
-        return np.array(Q)
-
-    def critical(self):
-        """
-        Compute the critical discharges for every possible water depth.
-        
-        Q = sqrt(g*S^3*dh/dS)
-
-        Set attribute
-        -------------
-        Qcr : The critical discharges
-        """
-        # dS / dh = B
-        Qcr = np.sqrt(g*self.S**3/self.B)
-        self.df["Qcr"] = Qcr
-
-        return np.array(Qcr)
 
     @property
     def x(self):
@@ -454,9 +452,8 @@ class Profile:
         np.ndarray
             The corresponding surface area
         """
-        h_array = np.asarray(h_array)
 
-        h, w, S = self.df[
+        h, B, S = self.df[
             ["h", "B", "S"]
         ].sort_values("h").drop_duplicates("h").to_numpy().T
 
@@ -475,14 +472,18 @@ class Profile:
             arginf = argsup - 1
             # interpolate
             r = (h_interp - h[arginf]) / (h[argsup] - h[arginf])
-            wi = r * (w[argsup] - w[arginf]) + w[arginf]
-            ds = (h_interp - h[arginf]) * (wi + w[arginf])/2
+            Bi = r * (B[argsup] - B[arginf]) + B[arginf]
+            ds = (h_interp - h[arginf]) * (Bi + B[arginf])/2
             s[i] = S[arginf] + ds
 
         return s
     
     def interp_Qcr(self, h_array: Iterable) -> np.ndarray:
-        return np.sqrt(g*self.interp_S(h_array)**3/self.interp_B(h_array))
+        Qcr = np.full_like(h_array, None)
+        B = self.interp_B(h_array)
+        mask = B != 0
+        Qcr[mask] = np.sqrt(g*self.interp_S(h_array)[mask]**3/self.interp_B(h_array)[mask])
+        return Qcr
 
     def interp_Q(self, h_array: Iterable) -> np.ndarray:
         """
@@ -494,8 +495,8 @@ class Profile:
         h_array : Iterable
             The water depths array.
         
-        Returns
-        -------
+        Return
+        ------
         np.ndarray
             The corresponding discharges
         """
@@ -506,103 +507,22 @@ class Profile:
         mask = ~np.isclose(P, 0)
         Q[mask] = S[mask] * GMS(self.K, S[mask]/P[mask], self.i)
         return Q
-
-    def interp_h(self, Q_array: Iterable) -> np.ndarray:
-        return NotImplementedError(
-            "Yeah I'm not sure how to do this (surjective function)"
+    
+    def plot(self, interp_num=1000, *args, **kwargs):
+        """Call :func:`~profile_diagram(self.x, self.z, 
+        self.h, self.Q, self.Qcr)` and update the lines with 
+        The interpolated data."""
+        fig, (ax1, ax2) = profile_diagram(
+            self.x, self.z, self.h, self.Q, self.Qcr,
+            *args, **kwargs
         )
 
-    def plot(self, h: float = None,
-             fig=None, ax0=None, ax1=None, show=False):
-        """
-        Plot riverbed cross section and Q(h) in a sigle figure
+        l1, l2 = ax2.get_lines()
+        h = np.linspace(self.h.min(), self.h.max(), interp_num)
+        l1.set_data(self.interp_Q(h), h)
+        l2.set_data(self.interp_Qcr(h), h)
 
-        Parameters
-        ----------
-        h : float
-            Water depth of stream cross section to fill
-        show : bool
-            wether to show figure or not
-        fig, (ax0, ax1)
-            figure and axes on which to draw (ax0: riverberd, ax1: Q(h))
-
-        Returns
-        -------
-        pyplot figure
-            figure containing plots
-        pyplot axis
-            profile coordinates transversal position vs. elevation
-        pyplot axis
-            discharge vs. water depth
-        """
-        if fig is None:
-            fig = plt.figure()
-        if ax1 is None:
-            ax1 = fig.add_subplot()
-        if ax0 is None:
-            ax0 = fig.add_subplot()
-            ax0.patch.set_visible(False)
-
-        # plotting input bed coordinates
-        lxz, = ax0.plot(self.rawdata.x, self.rawdata.z, '-o',
-                        color='gray', lw=3, ms=8, mew=1,
-                        label='Profil en travers complet')
-        # potting framed coordinates (the ones used for computations)
-        ax0.plot(self.x, self.z, '-ok',
-                 mfc='w', lw=3, ms=5, mew=1,
-                 zorder=lxz.get_zorder(),
-                 label='Profil en travers utile')
-
-        # bonus wet surface example
-        if h is not None:
-            poly_data = self.df[self.df.z <= h + self.df.z.min()]
-            polygon, = ax0.fill(
-                poly_data.x, poly_data.z,
-                linewidth=0,
-                alpha=0.3, color='b',
-                label='Section mouillée',
-                zorder=0
-            )
-        ax0.set_xlabel('Distance profil [m]')
-        ax0.set_ylabel('Altitude [m.s.m.]')
-
-        # positionning axis labels on right and top
-        ax0.xaxis.tick_top()
-        ax0.xaxis.set_label_position('top')
-        ax0.yaxis.tick_right()
-        ax0.yaxis.set_label_position('right')
-
-        # plotting water depths
-        df = self.df.dropna().sort_values('Qcr')
-        if "Qcr" in df:
-            ax1.plot(df.Qcr, df.h, '-.', label='$y_{cr}$ (hauteur critique)')
-        df = self.df.sort_values('z')
-        if "Q" in df:
-            ax1.plot(df.Q, df.h, '--b', label="$y_0$ (hauteur d'eau)")
-        ax1.set_xlabel('Débit [m$^3$/s]')
-        ax1.set_ylabel("Hauteur d'eau [m]")
-        ax0.grid(False)
-
-        # plotting 'RG' & 'RD'
-        x01 = (1-0.05)*self.rawdata.x.min() + 0.05*self.rawdata.x.max()
-        x09 = (1-0.9)*self.rawdata.x.min() + 0.9*self.rawdata.x.max()
-        ztxt = self.rawdata.z.mean()
-        ax0.text(x01, ztxt, 'RG')
-        ax0.text(x09, ztxt, 'RD')
-
-        # match height and altitude ylims
-        ax1.set_ylim(ax0.get_ylim() - self.z.min())
-
-        # common legend
-        lines = (*ax0.get_lines(), *ax1.get_lines())
-        labels = [line.get_label() for line in lines]
-        ax0.legend(lines, labels)
-
-        # showing
-        # fig.tight_layout()
-        if show:
-            plt.show()
-        return fig, (ax0, ax1)
+        return fig, (ax1, ax2)
 
 
 DIR = Path(__file__).parent
@@ -619,13 +539,12 @@ def test_Section():
     )
     with plt.style.context('ggplot'):
         fig, (ax1, ax2) = profile.plot()
+        ax1.plot(df['Dist. cumulée [m]'],
+                 df['Altitude [m s.m.]'],
+                 '-o', ms=8, c='gray', zorder=0,
+                 lw=3, label="Profil complet")
         ax2.dataLim.x1 = profile.Q.max()
         ax2.autoscale_view()
-        # # Quadratic interpolation
-        # h = np.linspace(profile.h.min(), profile.h.max(), 1000)
-        # ax2.plot(profile.interp_Qcr(h), h)
-        # ax2.plot(profile.interp_Q(h), h)
-        # ax2.plot(df.Q, df.h)
         fig.show()
 
 
@@ -653,10 +572,6 @@ def test_ClosedSection():
         ax2.plot(Q, h, alpha=0.5, label="$y_0$ (analytique)")
         ax1.legend(loc="upper left").remove()
         ax2.legend(loc=(0.2, 0.6)).get_frame().set_alpha(1)
-        # # Quadratic interpolation
-        # h = np.linspace(profile.h.min(), profile.h.max(), 1000)
-        # ax2.plot(profile.interp_Qcr(h), h)
-        # ax2.plot(profile.interp_Q(h), h)
         fig.show()
 
 
