@@ -12,7 +12,7 @@ It will plot two diagrams with :
     - The water_depth-discharge relation
     - The water_depth-critical_discharge relation
 """
-from typing import Iterable, Tuple, NamedTuple
+from typing import Iterable, Tuple
 from pathlib import Path
 import numpy as np
 from scipy.interpolate import interp1d
@@ -154,17 +154,11 @@ def strip_outside_world(x: Iterable, z: Iterable) -> Tuple[np.ndarray]:
     return x[left | right], z[left | right]
 
 
-class CrossSectionProperties(NamedTuple):
-    wetted_width : Iterable[float]
-    wetted_perimeter : Iterable[float]
-    area : Iterable[float]
-
-
 def polygon_properties(
     x_arr: Iterable,
     z_arr: Iterable,
     z: float
-) -> CrossSectionProperties:
+) -> Tuple[float]:
     """
     Return the polygon perimeter and area of the formed polygons.
 
@@ -198,7 +192,7 @@ def polygon_properties(
     surface = np.abs(((z - zm) * dx).sum())
     width = np.abs(dx.sum())
 
-    return CrossSectionProperties(length, surface, width)
+    return length, surface, width
 
 
 def hydraulic_data(x: Iterable, z: Iterable, K: float = None, slope:float = None):
