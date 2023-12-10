@@ -56,7 +56,7 @@ def twin_points(x_arr: Iterable, z_arr: Iterable) -> Tuple:
     Duplicate an elevation to every crossing of its level and the (x, z) curve.
     This will make for straight water tables when filtering like this :
     >>> z_masked = z[z <= z[some_index]]  # array with z[some index] at its borders
-    Thus, making the section properties (S, P, B) easily computable.
+    Thus, making the cross-section properties (S, P, B) easily computable.
 
     _                          ___
     /|     _____              ////
@@ -115,7 +115,7 @@ def strip_outside_world(x: Iterable, z: Iterable) -> Tuple[np.ndarray]:
     If this is not done, the flow section could extend
     to the sides and mess up the polygon.
 
-    Example of undefined section:
+    Example of undefined profile:
 
              _
             //\~~~~~~~~~~~~~~~~~~  <- Who knows where this water table ends ?
@@ -145,7 +145,7 @@ def strip_outside_world(x: Iterable, z: Iterable) -> Tuple[np.ndarray]:
     left = ix <= argmin  # boolean array inidcatinf left of the bottom
     right = argmin <= ix  # boolean array indicating right
 
-    # Highest framed elevation (avoiding sections with undefined borders)
+    # Highest framed elevation (avoiding profiles with undefined borders)
     left_max = z[left].argmax()
     right_max = z[right].argmax() + argmin
 
@@ -317,7 +317,7 @@ class Profile:
         Set attribute
         -------------
         df : pandas.DataFrame
-            enhanced data from section.rawdata
+            enhanced data from profile.rawdata
         x : x-coorinates
         z : elevation
         """
@@ -549,7 +549,7 @@ class Profile:
                  zorder=lxz.get_zorder(),
                  label='Profil en travers utile')
 
-        # bonus wet section example
+        # bonus wet surface example
         if h is not None:
             poly_data = self.df[self.df.z <= h + self.df.z.min()]
             polygon, = ax0.fill(
@@ -607,20 +607,20 @@ DIR = Path(__file__).parent
 def test_Section():
 
     df = pd.read_csv(DIR / 'profile.csv')
-    section = Profile(
+    profile = Profile(
         df['Dist. cumulée [m]'],
         df['Altitude [m s.m.]'],
         33,
         0.12/100
     )
     with plt.style.context('ggplot'):
-        fig, (ax1, ax2) = section.plot()
-        # ax2.dataLim.x1 = section.Q.max()
-        # ax2.autoscale_view()
+        fig, (ax1, ax2) = profile.plot()
+        ax2.dataLim.x1 = profile.Q.max()
+        ax2.autoscale_view()
         # # Quadratic interpolation
-        # h = np.linspace(section.h.min(), section.h.max(), 1000)
-        # ax2.plot(section.interp_Qcr(h), h)
-        # ax2.plot(section.interp_Q(h), h)
+        # h = np.linspace(profile.h.min(), profile.h.max(), 1000)
+        # ax2.plot(profile.interp_Qcr(h), h)
+        # ax2.plot(profile.interp_Q(h), h)
         # ax2.plot(df.Q, df.h)
         fig.show()
 
@@ -631,14 +631,14 @@ def test_ClosedSection():
     r = 10
     K = 33
     i = 0.12/100
-    section = Profile(
+    profile = Profile(
         (df.x+1)*r, (df.z+1)*r,
         K, i
     )
 
     with plt.style.context('ggplot'):
-        fig, (ax1, ax2) = section.plot()
-        ax2.dataLim.x1 = section.Q.max()
+        fig, (ax1, ax2) = profile.plot()
+        ax2.dataLim.x1 = profile.Q.max()
         ax2.autoscale_view()
 
         theta = np.linspace(1e-10, np.pi)
@@ -650,9 +650,9 @@ def test_ClosedSection():
         ax1.legend(loc="upper left").remove()
         ax2.legend(loc=(0.2, 0.6)).get_frame().set_alpha(1)
         # # Quadratic interpolation
-        # h = np.linspace(section.h.min(), section.h.max(), 1000)
-        # ax2.plot(section.interp_Qcr(h), h)
-        # ax2.plot(section.interp_Q(h), h)
+        # h = np.linspace(profile.h.min(), profile.h.max(), 1000)
+        # ax2.plot(profile.interp_Qcr(h), h)
+        # ax2.plot(profile.interp_Q(h), h)
         fig.show()
 
 
