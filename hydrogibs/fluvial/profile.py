@@ -558,12 +558,14 @@ def test_ClosedSection():
         ax2.dataLim.x1 = profile.Q.max()
         ax2.autoscale_view()
 
+        # Analytical solution
         theta = np.linspace(1e-10, np.pi)
         S = theta*r**2 - r**2*np.cos(theta)*np.sin(theta)
         P = 2*theta*r
         Q = K*(S/P)**(2/3)*S*(i)**0.5
         h = r * (1-np.cos(theta))
         ax2.plot(Q, h, alpha=0.5, label="$y_0$ (analytique)")
+
         ax1.legend(loc="upper left").remove()
         ax2.legend(loc=(0.2, 0.6)).get_frame().set_alpha(1)
         fig.show()
