@@ -453,7 +453,7 @@ class Profile:
 
         s = np.zeros_like(h_array)
         for i, h_interp in enumerate(h_array):
-            # Checking if its within range
+            # Checking if h_interp is within range
             mask = h >= h_interp
             if mask.all():
                 s[i] = 0
