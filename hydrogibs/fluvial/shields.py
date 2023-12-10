@@ -112,7 +112,7 @@ def smart_jaeggi(h: float, i: float, s: float, theta_cr: float, Dm: float):
 
 
 DIR = Path(__file__).parent
-shields = pd.read_csv(DIR / "shields.csv")
+shields = pd.read_csv(DIR / "shields-data.csv")
 vanrijn = pd.read_csv(DIR / "shields-vanrijn.csv")
 
 
@@ -231,10 +231,10 @@ class ShieldsDiagram:
 
 def main():
 
-    from canal import Section
+    from profile import Profile
 
     df = pd.read_csv(DIR / 'profile.csv')
-    section = Section(
+    section = Profile(
         df['Dist. cumulée [m]'],
         df['Altitude [m s.m.]'],
     ).compute_GMS_data(33, 0.12/100)
@@ -243,7 +243,7 @@ def main():
     granulometry = interp1d(grains["Tamisats [%]"], grains["Diamètre des grains [cm]"])
     d16, d50, d90 = granulometry((16, 50, 90))
     sd = ShieldsDiagram()
-    S, P = section.data.query("300 <= Q <= 1600")[["S", "P"]].to_numpy().T
+    S, P = section.df.query("300 <= Q <= 1600")[["S", "P"]].to_numpy().T
     for d in (d16, d50, d90):
         Rh = S/P
         shear = rho*g*Rh*0.12/100

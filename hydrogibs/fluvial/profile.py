@@ -1,5 +1,7 @@
 """
-Script for estimating the h-Q relationship from a given profile. 
+Script for estimating the h-Q relationship from a given profile 
+(according to GMS). 
+
 The object 'Profile' creates a complete diagram with the .plot() method.
 
 Run script along with the following files to test:
@@ -608,7 +610,9 @@ def test_Section():
     section = Profile(
         df['Dist. cumulée [m]'],
         df['Altitude [m s.m.]'],
-    ).compute_GMS_data(33, 0.12/100).compute_critical_data()
+        33,
+        0.12/100
+    )
     with plt.style.context('ggplot'):
         fig, (ax1, ax2) = section.plot()
         # ax2.dataLim.x1 = section.Q.max()
@@ -629,7 +633,8 @@ def test_ClosedSection():
     i = 0.12/100
     section = Profile(
         (df.x+1)*r, (df.z+1)*r,
-    ).compute_GMS_data(K, i).compute_critical_data()
+        K, i
+    )
 
     with plt.style.context('ggplot'):
         fig, (ax1, ax2) = section.plot()
