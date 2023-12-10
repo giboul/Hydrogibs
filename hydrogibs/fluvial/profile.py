@@ -37,7 +37,7 @@ def GMS(K: float, Rh: float, i: float) -> float:
         The hydraulic radius, area/perimeter or width
     i : float
         The slope of the riverbed
-    
+
     Return
     ------
     float
@@ -195,7 +195,7 @@ def polygon_properties(
     return length, surface, width
 
 
-def hydraulic_data(x: Iterable, z: Iterable, K: float = None, slope:float = None):
+def hydraulic_data(x: Iterable, z: Iterable, K: float = None, slope: float = None):
     """
     Derive relation between water depth and discharge (Manning-Strickler)
 
@@ -281,7 +281,7 @@ def profile_diagram(
         ax1 = fig.add_subplot()
         ax0 = fig.add_subplot()
         ax0.patch.set_visible(False)
-    
+
     x = np.array(x)
     z = np.array(z)
     h = np.array(h)
@@ -323,6 +323,7 @@ def profile_diagram(
     ax0.legend(lines, labels)
 
     return fig, (ax0, ax1)
+
 
 class Profile:
     """
@@ -370,6 +371,7 @@ class Profile:
         Returns an interpolated value of the discharge (GMS)
     interp_h(h: Iterable)
     """
+
     def __init__(
         self,
         x: Iterable,  # position array from left to right river bank
@@ -440,7 +442,7 @@ class Profile:
         ----------
         h_array : Iterable
             Array of water depths
-        
+
         Returns
         -------
         np.ndarray
@@ -471,12 +473,13 @@ class Profile:
             s[i] = S[arginf] + ds
 
         return s
-    
+
     def interp_Qcr(self, h_array: Iterable) -> np.ndarray:
         Qcr = np.full_like(h_array, None)
         B = self.interp_B(h_array)
         mask = B != 0
-        Qcr[mask] = np.sqrt(g*self.interp_S(h_array)[mask]**3/self.interp_B(h_array)[mask])
+        Qcr[mask] = np.sqrt(g*self.interp_S(h_array)[mask]
+                            ** 3/self.interp_B(h_array)[mask])
         return Qcr
 
     def interp_Q(self, h_array: Iterable) -> np.ndarray:
@@ -488,7 +491,7 @@ class Profile:
         ----------
         h_array : Iterable
             The water depths array.
-        
+
         Return
         ------
         np.ndarray
@@ -501,7 +504,7 @@ class Profile:
         mask = ~np.isclose(P, 0)
         Q[mask] = S[mask] * GMS(self.K, S[mask]/P[mask], self.i)
         return Q
-    
+
     def plot(self, interp_num=1000, *args, **kwargs):
         """Call :func:`~profile_diagram(self.x, self.z, 
         self.h, self.Q, self.Qcr)` and update the lines with 
