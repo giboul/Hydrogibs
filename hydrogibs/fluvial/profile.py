@@ -250,7 +250,7 @@ def hydraulic_data(x: Iterable, z: Iterable, K: float = None, slope: float = Non
         Rh[mask] = S[mask] / P[mask]
         v[mask] = GMS(K, Rh[mask], slope)
         Q = S * v
-        df = df | dict(v=v, Q=Q)
+        df = df | dict(Rh=Rh, v=v, Q=Q)
 
     return pd.DataFrame.from_dict(df)
 
