@@ -53,13 +53,18 @@ def twin_points(x_arr: Iterable, z_arr: Iterable) -> Tuple:
     >>> z_masked = z[z <= z[some_index]]  # array with z[some index] at its borders
     Thus, making the cross-section properties (S, P, B) easily computable.
 
-    _                          ___
     /|     _____              ////
     /|    //////\            /////
-    /o~~~o~~~~~~~o~~~~~~~~~~o/////
+    /+~~~+~~~~~~~o~~~~~~~~~~+/////
     /|__//////////\        ///////
     ///////////////\______////////
     //////////////////////////////
+    Legend:
+         _
+        //\ : ground
+        ~ : water table
+        o : a certain point given by some pair of (x, z)
+        + : the new points created by this function
 
     Parameters
     ----------
@@ -118,6 +123,10 @@ def strip_outside_world(x: Iterable, z: Iterable) -> Tuple[np.ndarray]:
     ______//////\        //\_____
     /////////////\______/////////
     /////////////////////////////
+    Legend:
+         _
+        //\ : ground
+        ~ : water table
 
     Parameters
     ----------
