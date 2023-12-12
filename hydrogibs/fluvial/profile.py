@@ -1,22 +1,24 @@
 """
-Script for estimating the h-Q relationship from a given profile 
-(according to GMS). 
+Script for estimating the h-Q relationship 
+from a given profile (according to GMS). 
 
-The object 'Profile' creates a complete diagram with the .plot() method.
+The object 'Profile' stores the hydraulic data as 
+a pandas.DataFrame and creates a complete diagram 
+with the .plot() method.
 
 Run script along with the following files to test:
     - profile.csv
-    - 'closedProfile.csv'
+    - closedProfile.csv
 It will plot two diagrams with :
     - Limits enclosing the problem
     - The water_depth-discharge relation
     - The water_depth-critical_discharge relation
 """
+from typing import Iterable, Tuple
+from pathlib import Path
 from scipy.interpolate import interp1d
 from matplotlib import pyplot as plt
 from matplotlib.figure import Figure
-from typing import Iterable, Tuple
-from pathlib import Path
 import pandas as pd
 import numpy as np
 
@@ -51,7 +53,7 @@ def twin_points(x_arr: Iterable, z_arr: Iterable) -> Tuple[np.ndarray]:
     """
     Duplicate an elevation to every crossing of its level and the (x, z) curve.
     This will make for straight water tables when filtering like this :
-    >>> z_masked = z[z <= z[some_index]]  # array with z[some index] at its borders
+    >>> z_masked = z[z <= z[sx]]  # array with z[ix] at its borders
     Thus, making the cross-section properties (S, P, B) easily computable.
 
     /|     _____              ////
@@ -90,7 +92,10 @@ def twin_points(x_arr: Iterable, z_arr: Iterable) -> Tuple[np.ndarray]:
     new_z = np.array([])
     new_i = np.array([], dtype=np.int32)
 
-    for i, ((x1, z1), (x2, z2)) in enumerate(zip(points[:-1], points[1:]), start=1):
+    for i, ((x1, z1), (x2, z2)) in enumerate(
+        zip(points[:-1], points[1:]),
+        start=1
+    ):
 
         add_z = np.sort(z_arr[(min(z1, z2) < z_arr) & (z_arr < max(z1, z2))])
         if z2 < z1:
@@ -370,12 +375,9 @@ class Profile(pd.DataFrame):
         K: float = None,  # The manning-strickler coefficient
         Js: float = None  # The riverbed's slope
     ) -> None:
-        """Set rawdata DataFrame, K, Js and 
-        call :func:`~hydraulic_data(x, z, K, Js)` """
+        """Initialize :func:`~hydraulic_data(x, z, K, Js)` and set K and Js"""
 
-        # 1) enhance coordinates
         x, z = twin_points(x, z)
-        # 2) strip coordinates
         x, z = strip_outside_world(x, z)
         hd = hydraulic_data(x, z)
         hd["x"] = x
@@ -436,27 +438,6 @@ class Profile(pd.DataFrame):
 
         return s
 
-    def interp_Qcr(self, h_array: Iterable) -> np.ndarray:
-        """
-        Interpolate critical discharge from water depth.
-
-        Parameters
-        ----------
-        h_array : Iterable
-            The water depths array.
-
-        Return
-        ------
-        np.ndarray
-            The corresponding critical discharge
-        """
-        Qcr = np.full_like(h_array, None)
-        B = self.interp_B(h_array)
-        S = self.interp_S(h_array)
-        mask = B != 0
-        Qcr[mask] = np.sqrt(g*S[mask]**3/B[mask])
-        return Qcr
-
     def interp_Q(self, h_array: Iterable) -> np.ndarray:
         """
         Interpolate discharge from water depth with
@@ -480,10 +461,30 @@ class Profile(pd.DataFrame):
         Q[mask] = S[mask] * GMS(self.K, S[mask]/P[mask], self.Js)
         return Q
 
-    def plot(self, interp_num=1000, *args, **kwargs):
-        """Call :func:`~profile_diagram(self.x, self.z, 
-        self.h, self.Q, self.Qcr)` and update the lines with 
-        The interpolated data."""
+    def interp_Qcr(self, h_array: Iterable) -> np.ndarray:
+        """
+        Interpolate critical discharge from water depth.
+
+        Parameters
+        ----------
+        h_array : Iterable
+            The water depths array.
+
+        Return
+        ------
+        np.ndarray
+            The corresponding critical discharge
+        """
+        Qcr = np.full_like(h_array, None)
+        B = self.interp_B(h_array)
+        S = self.interp_S(h_array)
+        mask = B != 0
+        Qcr[mask] = np.sqrt(g*S[mask]**3/B[mask])
+        return Qcr
+
+    def plot(self, interp_num=1000, *args, **kwargs) -> Tuple[Figure, Tuple[plt.Axes]]:
+        """Call :func:`~profile_diagram(self.x, self.z,  self.h, self.Q, self.Qcr)` 
+        and update the lines with the interpolated data."""
         fig, (ax1, ax2) = profile_diagram(
             self.x, self.z, self.h, self.Q, self.Qcr,
             *args, **kwargs
