@@ -247,14 +247,14 @@ def hydraulic_data(x: Iterable, z: Iterable) -> pd.DataFrame:
 
 
 def profile_diagram(
-        x: Iterable,
-        z: Iterable,
-        h: Iterable,
-        Q: Iterable,
-        Qcr: Iterable,
-        fig=None,
-        axes=None
-    ) -> Tuple[Figure, Tuple[plt.Axes, plt.Axes]]:
+    x: Iterable,
+    z: Iterable,
+    h: Iterable,
+    Q: Iterable,
+    Qcr: Iterable,
+    fig=None,
+    axes=None
+) -> Tuple[Figure, Tuple[plt.Axes, plt.Axes]]:
     """
     Plot riverbed cross section and Q(h) in a sigle figure
 
