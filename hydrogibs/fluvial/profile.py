@@ -12,12 +12,13 @@ It will plot two diagrams with :
     - The water_depth-discharge relation
     - The water_depth-critical_discharge relation
 """
+from scipy.interpolate import interp1d
+from matplotlib import pyplot as plt
+from matplotlib.figure import Figure
 from typing import Iterable, Tuple
 from pathlib import Path
-import numpy as np
-from scipy.interpolate import interp1d
 import pandas as pd
-from matplotlib import pyplot as plt
+import numpy as np
 
 
 g = 9.81
@@ -35,7 +36,7 @@ def GMS(K: float, Rh: float, i: float) -> float:
         The Manning-Strickler coefficient
     Rh : float
         The hydraulic radius, area/perimeter or width
-    i : float
+    Js : float
         The slope of the riverbed
 
     Return
@@ -46,7 +47,7 @@ def GMS(K: float, Rh: float, i: float) -> float:
     return K * Rh**(2/3) * i**0.5
 
 
-def twin_points(x_arr: Iterable, z_arr: Iterable) -> Tuple:
+def twin_points(x_arr: Iterable, z_arr: Iterable) -> Tuple[np.ndarray]:
     """
     Duplicate an elevation to every crossing of its level and the (x, z) curve.
     This will make for straight water tables when filtering like this :
@@ -204,7 +205,7 @@ def polygon_properties(
     return length, surface, width
 
 
-def hydraulic_data(x: Iterable, z: Iterable, K: float = None, slope: float = None):
+def hydraulic_data(x: Iterable, z: Iterable) -> pd.DataFrame:
     """
     Derive relation between water depth and discharge (Manning-Strickler)
 
@@ -229,30 +230,20 @@ def hydraulic_data(x: Iterable, z: Iterable, K: float = None, slope: float = Non
         Qcr : critical discharge
         Q : discharge (if GMS computed)
     """
-    # 1) enhance coordinates
-    x, z = twin_points(x, z)
-    # 2) strip coordinates
-    x, z = strip_outside_world(x, z)
-    # 3) Compute wet section's properties
+    # Compute wet section's properties
     P, S, B = np.transpose([polygon_properties(x, z, zi) for zi in z])
     h = z - z.min()
-    # 4. Compute h_cr-Qcr
+    mask = P != 0
+    Rh = np.full_like(P, None)
+    Rh[mask] = S[mask] / P[mask]
+    # Compute h_cr-Qcr
     Qcr = np.full_like(B, None)
     mask = B != 0
     Qcr[mask] = np.sqrt(g*S[mask]**3/B[mask])
 
-    df = dict(x=x, z=z, h=h, P=P, S=S, B=B, Qcr=Qcr)
-
-    if K is not None and slope is not None:
-        Rh = np.full_like(P, None)
-        v = np.full_like(P, None)
-        mask = P != 0
-        Rh[mask] = S[mask] / P[mask]
-        v[mask] = GMS(K, Rh[mask], slope)
-        Q = S * v
-        df = df | dict(Rh=Rh, v=v, Q=Q)
-
-    return pd.DataFrame.from_dict(df)
+    return pd.DataFrame.from_dict(dict(
+        h=h, P=P, S=S, Rh=Rh, B=B, Qcr=Qcr
+    ))
 
 
 def profile_diagram(
@@ -262,7 +253,8 @@ def profile_diagram(
         Q: Iterable,
         Qcr: Iterable,
         fig=None,
-        axes=None):
+        axes=None
+    ) -> Tuple[Figure, Tuple[plt.Axes, plt.Axes]]:
     """
     Plot riverbed cross section and Q(h) in a sigle figure
 
@@ -334,42 +326,33 @@ def profile_diagram(
     return fig, (ax0, ax1)
 
 
-class Profile:
+class Profile(pd.DataFrame):
     """
-    An object storing and plotting hydraulic data about the given cross-section
+    An :func:`~pandas.DataFrame` object.
 
     Attributes
     ----------
-    rawdata : pd.DataFrame
-        DataFrame containing given x and z coordinates
-    newdata : pd.DataFrame
-        DataFrame with more points
-    df : pd.DataFrame
-        concatenation of rawdata & newdata
+    x : pd.Series
+        x-coordinates 
+        (horizontal distance from origin)
+    z : pd.Series
+        z-coordinates (altitudes)
+    h : pd.Series
+        Water depths
+    P : pd.Series
+        Wtted perimeter
+    S : pd.Series
+        Wetted area
+    Rh : pd.Series
+        Hydraulic radius
+    Q : pd.Series
+        Discharge (GMS)
+    Q : pd.Series
+        Critical discharge
     K : float
         Manning-Strickler coefficient
-    i : float
+    Js : float
         bed's slope
-
-    Properties
-    ----------
-    x : pd.Series
-        Shortcut for the enhanced coordinates
-        self.data.x
-    z : pd.Series
-        Shortcut for the enhanced altitudes
-        self.data.z
-    h : pd.Series
-        Shortcut for the enhanced water depths 
-        self.data.z
-    P : pd.Series
-        Shortcut for the wet perimeter
-    S : pd.Series
-        Shortcut for the wet area
-    Rh : pd.Series
-        Shortcut for the hydraulic radius
-    Q : pd.Series
-        Shortcut for the dicharge (GMS)
 
     Methods
     -------
@@ -377,8 +360,7 @@ class Profile:
         Plots a matplotlib diagram with the profile,
         the Q-h & Q-h_critical curves and a bonus surface from h
     interp_Q(h: Iterable)
-        Returns an interpolated value of the discharge (GMS)
-    interp_h(h: Iterable)
+        Returns an quadratic interpolation of the discharge (GMS)
     """
 
     def __init__(
@@ -386,55 +368,26 @@ class Profile:
         x: Iterable,  # position array from left to right river bank
         z: Iterable,  # altitude array from left to right river bank
         K: float = None,  # The manning-strickler coefficient
-        slope: float = None  # The riverbed's slope
+        Js: float = None  # The riverbed's slope
     ) -> None:
-        """Set rawdata DataFrame, K, slope and 
-        call :func:`~hydraulic_data(x, z, K, slope)` """
+        """Set rawdata DataFrame, K, Js and 
+        call :func:`~hydraulic_data(x, z, K, Js)` """
 
-        self.rawdata = pd.DataFrame(zip(x, z), columns=["x", "z"])
-        self.df = hydraulic_data(x, z, K, slope)
-        self.K = K
-        self.i = slope
+        # 1) enhance coordinates
+        x, z = twin_points(x, z)
+        # 2) strip coordinates
+        x, z = strip_outside_world(x, z)
+        hd = hydraulic_data(x, z)
+        hd["x"] = x
+        hd["z"] = z
 
-    @property
-    def x(self):
-        return self.df.x
+        super().__init__(hd)
 
-    @property
-    def z(self):
-        return self.df.z
-
-    @property
-    def h(self):
-        return self.df.h
-
-    @property
-    def P(self):
-        return self.df.P
-
-    @property
-    def S(self):
-        return self.df.S
-
-    @property
-    def B(self):
-        return self.df.B
-
-    @property
-    def Rh(self):
-        return self.df.Rh
-
-    @property
-    def v(self):
-        return self.df.v
-
-    @property
-    def Q(self):
-        return self.df.Q
-
-    @property
-    def Qcr(self):
-        return self.df.Qcr
+        if K is not None and Js is not None:
+            self["v"] = GMS(K, self.Rh, Js)
+            self["Q"] = self.S * self.v
+            self.K = K
+            self.Js = Js
 
     def interp_B(self, h_array: Iterable) -> np.ndarray:
         return interp1d(self.h, self.B)(h_array)
@@ -458,7 +411,7 @@ class Profile:
             The corresponding surface area
         """
 
-        h, B, S = self.df[
+        h, B, S = self[
             ["h", "B", "S"]
         ].sort_values("h").drop_duplicates("h").to_numpy().T
 
@@ -484,11 +437,24 @@ class Profile:
         return s
 
     def interp_Qcr(self, h_array: Iterable) -> np.ndarray:
+        """
+        Interpolate critical discharge from water depth.
+
+        Parameters
+        ----------
+        h_array : Iterable
+            The water depths array.
+
+        Return
+        ------
+        np.ndarray
+            The corresponding critical discharge
+        """
         Qcr = np.full_like(h_array, None)
         B = self.interp_B(h_array)
+        S = self.interp_S(h_array)
         mask = B != 0
-        Qcr[mask] = np.sqrt(g*self.interp_S(h_array)[mask]
-                            ** 3/self.interp_B(h_array)[mask])
+        Qcr[mask] = np.sqrt(g*S[mask]**3/B[mask])
         return Qcr
 
     def interp_Q(self, h_array: Iterable) -> np.ndarray:
@@ -511,7 +477,7 @@ class Profile:
         P = self.interp_P(h)
         Q = np.zeros_like(h)
         mask = ~np.isclose(P, 0)
-        Q[mask] = S[mask] * GMS(self.K, S[mask]/P[mask], self.i)
+        Q[mask] = S[mask] * GMS(self.K, S[mask]/P[mask], self.Js)
         return Q
 
     def plot(self, interp_num=1000, *args, **kwargs):
@@ -543,6 +509,7 @@ def test_Section():
         33,
         0.12/100
     )
+
     with plt.style.context('ggplot'):
         fig, (ax1, ax2) = profile.plot()
         ax1.plot(df['Dist. cumulée [m]'],
