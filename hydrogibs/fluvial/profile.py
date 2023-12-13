@@ -83,19 +83,18 @@ def twin_points(x_arr: Iterable, z_arr: Iterable) -> Tuple[np.ndarray]:
     np.ndarray
         the enhanced y-array
     """
-    x_arr = np.asarray(x_arr)
-    z_arr = np.asarray(z_arr)
+    x_arr = np.array(x_arr, dtype=np.float32)
+    z_arr = np.array(z_arr, dtype=np.float32)
     points = np.vstack((x_arr, z_arr)).T
 
     # to avoid looping over a dynamic array
-    new_x = np.array([])
-    new_z = np.array([])
+    new_x = np.array([], dtype=np.float32)
+    new_z = np.array([], dtype=np.float32)
     new_i = np.array([], dtype=np.int32)
 
-    for i, ((x1, z1), (x2, z2)) in enumerate(
-        zip(points[:-1], points[1:]),
-        start=1
-    ):
+    for i, line in enumerate(zip(points[:-1], points[1:]), start=1):
+
+        (x1, z1), (x2, z2) = line
 
         add_z = np.sort(z_arr[(min(z1, z2) < z_arr) & (z_arr < max(z1, z2))])
         if z2 < z1:
@@ -148,8 +147,8 @@ def strip_outside_world(x: Iterable, z: Iterable) -> Tuple[np.ndarray]:
     np.ndarray(1D)
         the stripped y
     """
-    x = np.asarray(x)  # so that indexing works properly
-    z = np.asarray(z)
+    x = np.array(x, dtype=np.float32)  # so that indexing works properly
+    z = np.array(z, dtype=np.float32)
     ix = np.arange(x.size)  # indexes array
     argmin = z.argmin()  # index for the minimum elevation
     left = ix <= argmin  # boolean array inidcatinf left of the bottom
@@ -195,8 +194,8 @@ def polygon_properties(
     float
         Length of the water table
     """
-    x_arr = np.asarray(x_arr)
-    z_arr = np.asarray(z_arr)
+    x_arr = np.array(x_arr, dtype=np.float32)
+    z_arr = np.array(z_arr, dtype=np.float32)
 
     mask = (z_arr[1:] <= z) & (z_arr[:-1] <= z)
     zm = (z_arr[:-1] + z_arr[1:])[mask]/2
@@ -288,11 +287,11 @@ def profile_diagram(
         ax0 = fig.add_subplot()
         ax0.patch.set_visible(False)
 
-    x = np.array(x)
-    z = np.array(z)
-    h = np.array(h)
-    Q = np.array(Q)
-    Qcr = np.array(Qcr)
+    x = np.array(x, dtype=np.float32)
+    z = np.array(z, dtype=np.float32)
+    h = np.array(h, dtype=np.float32)
+    Q = np.array(Q, dtype=np.float32)
+    Qcr = np.array(Qcr, dtype=np.float32)
 
     l1, = ax0.plot(x, z, '-ok',
                    mfc='w', lw=3, ms=5, mew=1,
@@ -456,7 +455,7 @@ class Profile(pd.DataFrame):
         np.ndarray
             The corresponding discharges
         """
-        h = np.asarray(h_array)
+        h = np.array(h_array, dtype=np.float32)
         S = self.interp_S(h)
         P = self.interp_P(h)
         Q = np.zeros_like(h)
@@ -561,12 +560,14 @@ def test_minimal():
     with plt.style.context("ggplot"):
         prof = Profile(df.x, df.z, K, i)
         fig, (ax1, ax2) = prof.plot()
+        ax1.plot(df.x, df.z, '-o', ms=8, lw=3, c='gray', zorder=0)
         ax2.dataLim.x1 = prof.Q.max()
         ax2.autoscale_view()
         fig.show()
 
+
 if __name__ == "__main__":
-    test_Section()
-    test_ClosedSection()
+    # test_Section()
+    # test_ClosedSection()
     test_minimal()
     plt.show()
