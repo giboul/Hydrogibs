@@ -9,7 +9,7 @@ with the .plot() method.
 Run script along with the following files to test:
     - profile.csv
     - closedProfile.csv
-It will plot two diagrams with :
+It will plot three diagrams with :
     - Limits enclosing the problem
     - The water_depth-discharge relation
     - The water_depth-critical_discharge relation
@@ -328,6 +328,9 @@ def profile_diagram(
     labels = [line.get_label() for line in lines]
     ax0.legend(lines, labels)
 
+    ax1.dataLim.x0 = 0
+    ax1.autoscale_view()
+
     return fig, (ax0, ax1)
 
 
@@ -551,7 +554,19 @@ def test_ClosedSection():
         fig.show()
 
 
+def test_minimal():
+    df = pd.read_csv(DIR / "minimalProfile.csv")
+    K = 33
+    i = 0.12/100
+    with plt.style.context("ggplot"):
+        prof = Profile(df.x, df.z, K, i)
+        fig, (ax1, ax2) = prof.plot()
+        ax2.dataLim.x1 = prof.Q.max()
+        ax2.autoscale_view()
+        fig.show()
+
 if __name__ == "__main__":
     test_Section()
     test_ClosedSection()
+    test_minimal()
     plt.show()
