@@ -21,10 +21,7 @@ from matplotlib import pyplot as plt
 from matplotlib.figure import Figure
 import pandas as pd
 import numpy as np
-try:
-    import click
-except ImportError:
-    click = None
+import click
 
 
 g = 9.81
@@ -592,26 +589,25 @@ def csv_to_csv(input_file: str,
                 plt.show()
 
 
-if click is not None:
-    @click.command()
-    @click.option('-i', '--input-file')
-    @click.option('-o', '--output-file')
-    @click.option('-p', '--plot', default=False)
-    @click.option('-t', '--test', default=True, is_flag=True)
-    def main(input_file: str,
-             output_file: str,
-             plot: bool,
-             test: bool) -> None:
+@click.command()
+@click.option('-i', '--input-file')
+@click.option('-o', '--output-file')
+@click.option('-p', '--plot', default=False)
+@click.option('-t', '--test', default=True, is_flag=True)
+def main(input_file: str,
+            output_file: str,
+            plot: bool,
+            test: bool) -> None:
 
-        if input_file is not None:
-            csv_to_csv(input_file, output_file, plot)
-            exit()
+    if input_file is not None:
+        csv_to_csv(input_file, output_file, plot)
+        exit()
 
-        if test:
-            test_minimal()
-            test_Section()
-            test_ClosedSection()
-            plt.show()
+    if test:
+        test_minimal()
+        test_Section()
+        test_ClosedSection()
+        plt.show()
 
 if __name__ == "__main__":
     main()
