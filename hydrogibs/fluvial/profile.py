@@ -21,6 +21,10 @@ from matplotlib import pyplot as plt
 from matplotlib.figure import Figure
 import pandas as pd
 import numpy as np
+try:
+    import click
+except ImportError:
+    click = None
 
 
 g = 9.81
@@ -237,12 +241,12 @@ def hydraulic_data(x: Iterable, z: Iterable) -> pd.DataFrame:
     # Compute wet section's properties
     P, S, B = np.transpose([polygon_properties(x, z, zi) for zi in z])
     h = z - z.min()
-    mask = P != 0
+    mask = ~ np.isclose(P, 0)
     Rh = np.full_like(P, None)
     Rh[mask] = S[mask] / P[mask]
     # Compute h_cr-Qcr
     Qcr = np.full_like(B, None)
-    mask = B != 0
+    mask = ~ np.isclose(B, 0)
     Qcr[mask] = np.sqrt(g*S[mask]**3/B[mask])
 
     return pd.DataFrame.from_dict(dict(
@@ -381,11 +385,11 @@ class Profile(pd.DataFrame):
 
         x, z = twin_points(x, z)
         x, z = strip_outside_world(x, z)
+        df = pd.DataFrame.from_dict(dict(x=x, z=z))
         hd = hydraulic_data(x, z)
-        hd["x"] = x
-        hd["z"] = z
+        df = pd.concat((df, hd), axis="columns")
 
-        super().__init__(hd)
+        super().__init__(df)
 
         if K is not None and Js is not None:
             self["v"] = GMS(K, self.Rh, Js)
@@ -480,7 +484,7 @@ class Profile(pd.DataFrame):
         Qcr = np.full_like(h_array, None)
         B = self.interp_B(h_array)
         S = self.interp_S(h_array)
-        mask = B != 0
+        mask = ~ np.isclose(B, 0)
         Qcr[mask] = np.sqrt(g*S[mask]**3/B[mask])
         return Qcr
 
@@ -505,7 +509,7 @@ DIR = Path(__file__).parent
 
 def test_Section():
 
-    df = pd.read_csv(DIR / 'profile.csv')
+    df = pd.read_csv(DIR / 'profile-base.csv')
     profile = Profile(
         df['Dist. cumulée [m]'],
         df['Altitude [m s.m.]'],
@@ -566,8 +570,48 @@ def test_minimal():
         fig.show()
 
 
+def csv_to_csv(input_file: str,
+               output_file: str,
+               plot: bool) -> None:
+
+        if output_file is not None:
+            output_file = f"{Path(input_file).stem}-processed.csv"
+
+        df = pd.read_csv(input_file)
+        K = 33
+        i = 0.12/100
+        profile = Profile(df.x, df.z, K, i)
+        profile.to_csv(output_file, index=False)
+
+        if plot is not None:
+            with plt.style.context("ggplot"):
+                fig, (ax1, ax2) = profile.plot()
+                ax1.plot(df.x, df.z, '-o', ms=8, lw=3, c='gray', zorder=0)
+                ax2.dataLim.x1 = profile.Q.max()
+                ax2.autoscale_view()
+                plt.show()
+
+
+if click is not None:
+    @click.command()
+    @click.option('-i', '--input-file')
+    @click.option('-o', '--output-file')
+    @click.option('-p', '--plot', default=False)
+    @click.option('-t', '--test', default=False, is_flag=True)
+    def main(input_file: str,
+             output_file: str,
+             plot: bool,
+             test: bool) -> None:
+
+        if test:
+            test_minimal()
+            test_Section()
+            test_ClosedSection()
+            plt.show()
+            exit()
+        
+        if input_file is not None:
+            csv_to_csv(input_file, output_file, plot)
+
 if __name__ == "__main__":
-    # test_Section()
-    # test_ClosedSection()
-    test_minimal()
-    plt.show()
+    main()
