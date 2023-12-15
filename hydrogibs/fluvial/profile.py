@@ -597,21 +597,21 @@ if click is not None:
     @click.option('-i', '--input-file')
     @click.option('-o', '--output-file')
     @click.option('-p', '--plot', default=False)
-    @click.option('-t', '--test', default=False, is_flag=True)
+    @click.option('-t', '--test', default=True, is_flag=True)
     def main(input_file: str,
              output_file: str,
              plot: bool,
              test: bool) -> None:
+
+        if input_file is not None:
+            csv_to_csv(input_file, output_file, plot)
+            exit()
 
         if test:
             test_minimal()
             test_Section()
             test_ClosedSection()
             plt.show()
-            exit()
-        
-        if input_file is not None:
-            csv_to_csv(input_file, output_file, plot)
 
 if __name__ == "__main__":
     main()
