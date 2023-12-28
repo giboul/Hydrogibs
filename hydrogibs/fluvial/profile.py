@@ -50,6 +50,38 @@ def GMS(K: float, Rh: float, i: float) -> float:
     return K * Rh**(2/3) * i**0.5
 
 
+def equivalent_laws(Rh: float,
+        K: float = None,
+        C: float = None,
+        f: float = None) -> Tuple[float]:
+    
+    Rh = np.array(Rh)
+    Rh[np.isclose(Rh, 0)] = None
+
+    if sum(x is not None for x in (K, C, f)) != 1:
+        raise ValueError("Specify exactly one of (K, C, f)")
+
+    if K is not None:
+        C = K * Rh**(1/6)
+        f = 8*g / (K**2 * Rh**(1/3))
+    if C is not None:
+        K = C / Rh**(1/6)
+        f = 8 * g / C**2
+    if f is not None:
+        K = (8*g/f)**0.5 / Rh**(1/6)
+        C = (8*g/f)**0.5
+
+    def array(a):
+        if isinstance(a, (float, int)):
+            a = np.full_like(Rh, a)
+        a[np.isnan(a)] = 0
+        return a
+
+    K, C, f = map(array, (K, C, f))
+
+    return K, C, f
+
+
 def twin_points(x_arr: Iterable, z_arr: Iterable) -> Tuple[np.ndarray]:
     """
     Duplicate an elevation to every crossing of its level and the (x, z) curve.
@@ -238,9 +270,12 @@ def hydraulic_data(x: Iterable, z: Iterable) -> pd.DataFrame:
     # Compute wet section's properties
     P, S, B = np.transpose([polygon_properties(x, z, zi) for zi in z])
     h = z - z.min()
-    mask = ~ np.isclose(P, 0)
+
     Rh = np.full_like(P, None)
+    Rh[np.isclose(S, 0)] = 0
+    mask = ~ np.isclose(P, 0)
     Rh[mask] = S[mask] / P[mask]
+
     # Compute h_cr-Qcr
     Qcr = np.full_like(B, None)
     mask = ~ np.isclose(B, 0)
@@ -375,10 +410,26 @@ class Profile(pd.DataFrame):
         self,
         x: Iterable,  # position array from left to right river bank
         z: Iterable,  # altitude array from left to right river bank
-        K: float = None,  # The manning-strickler coefficient
-        Js: float = None  # The riverbed's slope
+        **fric_kwargs
     ) -> None:
-        """Initialize :func:`~hydraulic_data(x, z, K, Js)` and set K and Js"""
+        """
+        Initialize :func:`~hydraulic_data(x, z, K, Js)` and set the friction law Js
+        
+        Parameters
+        ----------
+        x: Iterable
+            position array from left to right river bank
+        z: Iterable
+            altitude array from left to right river bank
+        K: float = None
+            The manning-strickler coefficient
+        C: float = None
+            The Chézy coefficient
+        f: float = None
+            The Darcy-Weisbach coefficient
+        Js: float = None
+            The riverbed's slope
+        """
 
         x, z = twin_points(x, z)
         x, z = strip_outside_world(x, z)
@@ -388,11 +439,22 @@ class Profile(pd.DataFrame):
 
         super().__init__(df)
 
-        if K is not None and Js is not None:
+        if fric_kwargs:
+            Js = fric_kwargs.pop("Js")
+            if isinstance(Js, float):
+                Js = np.full_like(self.x, Js)
+            K, C, f = equivalent_laws(self.Rh, **fric_kwargs)
             self["v"] = GMS(K, self.Rh, Js)
             self["Q"] = self.S * self.v
-            self.K = K
-            self.Js = Js
+
+            self["K"] = K
+            self["Js"] = Js
+
+    def interp_K(self, h_array: Iterable) -> np.ndarray:
+        return interp1d(self.h, self.K)(h_array)
+
+    def interp_Js(self, h_array: Iterable) -> np.ndarray:
+        return interp1d(self.h, self.Js)(h_array)
 
     def interp_B(self, h_array: Iterable) -> np.ndarray:
         return interp1d(self.h, self.B)(h_array)
@@ -428,7 +490,8 @@ class Profile(pd.DataFrame):
                 s[i] = 0
                 continue
             if not mask.any():
-                s[i] = S[-1]
+                s[i] = float("nan")
+                continue
 
             # Find lower and upper bounds
             argsup = mask.argmax()
@@ -461,7 +524,11 @@ class Profile(pd.DataFrame):
         P = self.interp_P(h)
         Q = np.zeros_like(h)
         mask = ~np.isclose(P, 0)
-        Q[mask] = S[mask] * GMS(self.K, S[mask]/P[mask], self.Js)
+        Q[mask] = S[mask] * GMS(
+            self.interp_K(h)[mask],
+            S[mask]/P[mask],
+            self.interp_Js(h)[mask]
+        )
         return Q
 
     def interp_Qcr(self, h_array: Iterable) -> np.ndarray:
@@ -506,12 +573,12 @@ DIR = Path(__file__).parent
 
 def test_Section():
 
-    df = pd.read_csv(DIR / 'profile-base.csv')
+    df = pd.read_csv(DIR / 'profile.csv')
     profile = Profile(
         df['Dist. cumulée [m]'],
         df['Altitude [m s.m.]'],
-        33,
-        0.12/100
+        f=1,
+        Js=0.12/100
     )
 
     with plt.style.context('ggplot'):
@@ -522,6 +589,7 @@ def test_Section():
                  lw=3, label="Profil complet")
         ax2.dataLim.x1 = profile.Q.max()
         ax2.autoscale_view()
+        ax2.set_ylim(ax1.get_ylim()-profile.z.min())
         fig.show()
 
 
@@ -529,11 +597,11 @@ def test_ClosedSection():
 
     df = pd.read_csv(DIR / 'closedProfile.csv')
     r = 10
-    K = 33
-    i = 0.12/100
+    K=33
+    Js=0.12/100
     profile = Profile(
         (df.x+1)*r, (df.z+1)*r,
-        K, i
+        K=K, Js=Js
     )
 
     with plt.style.context('ggplot'):
@@ -545,24 +613,24 @@ def test_ClosedSection():
         theta = np.linspace(1e-10, np.pi)
         S = theta*r**2 - r**2*np.cos(theta)*np.sin(theta)
         P = 2*theta*r
-        Q = K*(S/P)**(2/3)*S*(i)**0.5
+        Q = K*(S/P)**(2/3)*S*Js**0.5
         h = r * (1-np.cos(theta))
         ax2.plot(Q, h, alpha=0.5, label="$y_0$ (analytique)")
 
         ax1.legend(loc="upper left").remove()
         ax2.legend(loc=(0.2, 0.6)).get_frame().set_alpha(1)
+        ax2.set_ylim(ax1.get_ylim()-profile.z.min())
         fig.show()
 
 
 def test_minimal():
     df = pd.read_csv(DIR / "minimalProfile.csv")
-    K = 33
-    i = 0.12/100
     with plt.style.context("ggplot"):
-        prof = Profile(df.x, df.z, K, i)
+        prof = Profile(df.x, df.z, K=33, Js=0.12/100)
         fig, (ax1, ax2) = prof.plot()
         ax1.plot(df.x, df.z, '-o', ms=8, lw=3, c='gray', zorder=0)
         ax2.dataLim.x1 = prof.Q.max()
+        ax2.set_ylim(ax1.get_ylim()-prof.z.min())
         ax2.autoscale_view()
         fig.show()
 
@@ -593,7 +661,7 @@ def csv_to_csv(input_file: str,
 @click.option('-i', '--input-file')
 @click.option('-o', '--output-file')
 @click.option('-p', '--plot', default=False)
-@click.option('-t', '--test', default=True, is_flag=True)
+@click.option('-t', '--test', default=False, is_flag=True)
 def main(input_file: str,
             output_file: str,
             plot: bool,

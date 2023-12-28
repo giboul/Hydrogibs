@@ -211,7 +211,8 @@ class YearlyMaxima:
 
         if error_func is None:
             error_func = mse
-            self.gumbel_params = *fit_gumbel_params(df.Q), 0
+
+        self.gumbel_params = *fit_gumbel_params(df.Q), 0
 
         bounds = default_bounds(df.Q, lower_xi=0)
         self.frechet_params = fit_GEV_params(
@@ -301,51 +302,46 @@ class YearlyMaxima:
     def plot(
         self,
         kind: Literal["probability", "gumbel", "return period"] = "gumbel",
-        fig=None, ax=None,
-        show=False,
-        style="ggplot"
+        fig=None,
+        ax=None,
     ):
 
-        with plt.style.context(style):
-            with plt.style.context({'font.family': 'monospace'}):
+        if fig is None:
+            fig = plt.gcf()
+        if ax is None:
+            ax = fig.subplots()
 
-                if fig is None:
-                    fig = plt.gcf()
-                if ax is None:
-                    ax = fig.subplots()
+        x = transform_dict['probability'][kind](self.p)
+        ax.scatter(x, self.Q, s=20, label="Empirique", zorder=4)
 
-                x = transform_dict['probability'][kind](self.p)
-                ax.scatter(x, self.Q, s=20, label="Empirique", zorder=4)
+        _prob = np.linspace(self.p.min(), self.p.max(), num=1000)
+        _x = transform_dict['probability'][kind](_prob)
 
-                _prob = np.linspace(self.p.min(), self.p.max(), num=1000)
-                _x = transform_dict['probability'][kind](_prob)
+        ax.plot(
+            _x,
+            self.frechet_inv(_prob),
+            label=rf"Fréchet $\xi={self.frechet_params[2]:.2f}$",
+            zorder=2
+        )
+        ax.plot(
+            _x,
+            self.weibull_inv(_prob),
+            label=rf"Weibull $\xi={self.weibull_params[2]:.2f}$",
+            zorder=1
+        )
+        ax.plot(
+            _x,
+            self.gumbel_inv(_prob),
+            label='Gumbel',
+            zorder=1
+        )
+        ax.legend()
+        ax.set_xlabel(_xaxis_label[kind])
+        ax.set_ylabel(
+            f"Quantiles des maxima\nannuels du débit (m$^3$/s)"
+        )
+        fig.tight_layout()
 
-                ax.plot(
-                    _x,
-                    self.frechet_inv(_prob),
-                    label=rf"Fréchet $\xi={self.frechet_params[2]:.2f}$",
-                    zorder=2
-                )
-                ax.plot(
-                    _x,
-                    self.weibull_inv(_prob),
-                    label=rf"Weibull $\xi={self.weibull_params[2]:.2f}$",
-                    zorder=1
-                )
-                ax.plot(
-                    _x,
-                    self.gumbel_inv(_prob),
-                    label='Gumbel',
-                    zorder=1
-                )
-                ax.legend()
-                ax.set_xlabel(_xaxis_label[kind])
-                ax.set_ylabel(
-                    f"Quantiles des maxima\nannuels du débit (m$^3$/s)"
-                )
-                fig.tight_layout()
-                if show:
-                    plt.show()
         return fig, ax
 
 
@@ -362,7 +358,10 @@ def main():
     df.t = pd.to_datetime(df.t, format="%Y-%m-%d %H:%M:%S")
 
     ym = YearlyMaxima(df.Q)
-    ym.plot(kind='return period', show=True)
+    with plt.style.context("ggplot"):
+        fig, ax = ym.plot(kind='return period')
+        ax.semilogx()
+        plt.show()
 
 
 if __name__ == "__main__":

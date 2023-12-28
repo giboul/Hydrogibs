@@ -15,6 +15,11 @@ g = cst.g
 nu_k = cst.nu_k
 
 
+def critical_shear(re: float) -> float:
+
+    return 0.22*re**-0.6 + 0.06*np.exp(-17.77*re**-0.6)
+
+
 def adimensional_diameter(diameter: float, solid_density: float, nu=nu_k):
     """
     Compute the adimensional diameter.
@@ -40,7 +45,7 @@ def reynolds(u_star: float, diameter: float, nu=nu_k):
     """
     Compute the Reynolds number of the solid grains.
 
-    R = u* * d / nu_k
+    R = d.u*/ nu_k
 
     Parameters
     ----------
@@ -169,7 +174,10 @@ class ShieldsDiagram:
 
         if plot_kw is None:
             plot_kw = dict()
-        axShields.loglog(shields.reynolds, shields.shear, **plot_kw)
+        l1, = axShields.loglog(shields.reynolds, shields.shear,
+                               **(plot_kw | dict(ls='--')))
+        shdiam = np.logspace(0, 5, num=100)
+        axShields.plot(shdiam, critical_shear(shdiam), **(plot_kw | dict(c=l1.get_color())))
         axVanRijn.loglog(vanrijn.diameter, vanrijn.shear, **plot_kw)
 
         axShields.set_title("Diagramme de Shields")
@@ -245,7 +253,7 @@ def main():
     granulometry = interp1d(grains["Tamisats [%]"], grains["Diamètre des grains [cm]"])
     d16, d50, d90 = granulometry((16, 50, 90))
     sd = ShieldsDiagram()
-    S, P = section.df.query("300 <= Q <= 1600")[["S", "P"]].to_numpy().T
+    S, P = section.query("300 <= Q <= 1600")[["S", "P"]].to_numpy().T
     for d in (d16, d50, d90):
         Rh = S/P
         shear = rho*g*Rh*0.12/100

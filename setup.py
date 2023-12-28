@@ -1,4 +1,4 @@
-from setuptools import find_packages, setup
+from setuptools import setup
 
 
 with open("README.md", "r") as f:
@@ -10,7 +10,7 @@ setup(
     description="A personal hydrology and hydraulics package"
                 " based on Christophe Ancey and Giovanni De Cesare's teaching: "
                 "http://fr.ancey.ch/cours/masterGC/cours-hydraulique.pdf",
-    packages=find_packages(exclude=["hydrogibs/test*"]),
+    packages=["hydrogibs"],
     include_package_data=True,
     long_description=long_description,
     long_description_content_type="text/markdown",
