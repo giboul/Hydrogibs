@@ -6,9 +6,15 @@ The object 'Profile' stores the hydraulic data as
 a pandas.DataFrame and creates a complete diagram 
 with the .plot() method.
 
+The following friction laws are supported here :
+    - Gauckler-Manning-Strickler
+    - Darcy
+    - Chézy
+
 Run script along with the following files to test:
     - profile.csv
     - closedProfile.csv
+    - minimalProfile.csv
 It will plot three diagrams with :
     - Limits enclosing the problem
     - The water_depth-discharge relation
@@ -51,10 +57,10 @@ def GMS(K: float, Rh: float, i: float) -> float:
 
 
 def equivalent_laws(Rh: float,
-        K: float = None,
-        C: float = None,
-        f: float = None) -> Tuple[float]:
-    
+                    K: float = None,
+                    C: float = None,
+                    f: float = None) -> Tuple[float]:
+
     Rh = np.array(Rh)
     Rh[np.isclose(Rh, 0)] = None
 
@@ -86,12 +92,12 @@ def twin_points(x_arr: Iterable, z_arr: Iterable) -> Tuple[np.ndarray]:
     """
     Duplicate an elevation to every crossing of its level and the (x, z) curve.
     This will make for straight water tables when filtering like this :
-    >>> z_masked = z[z <= z[sx]]  # array with z[ix] at its borders
+    >>> z_masked = z[z <= z[ix]]  # array with z[ix] at its borders
     Thus, making the cross-section properties (S, P, B) easily computable.
-
+    _                          ___
     /|     _____              ////
     /|    //////\            /////
-    /+~~~+~~~~~~~o~~~~~~~~~~+/////
+    /+~~~+-------o~~~~~~~~~~+/////
     /|__//////////\        ///////
     ///////////////\______////////
     //////////////////////////////
@@ -129,11 +135,14 @@ def twin_points(x_arr: Iterable, z_arr: Iterable) -> Tuple[np.ndarray]:
 
         (x1, z1), (x2, z2) = line
 
+        if abs(z1-z2) < 1e-10:
+            continue
+
         add_z = np.sort(z_arr[(min(z1, z2) < z_arr) & (z_arr < max(z1, z2))])
-        if z2 < z1:
-            add_z = add_z[::-1]  # if descending, reverse order
+        if z2 < z1:  # if descending,
+            add_z = add_z[::-1]  # reverse order
+        add_x = x1 + (x2 - x1) * (add_z - z1)/(z2 - z1)
         add_i = np.full_like(add_z, i, dtype=np.int32)
-        add_x = x1 + (x2 - x1) * (add_z - z1)/(z2 - z1)  # interpolation
 
         new_x = np.hstack((new_x, add_x))
         new_z = np.hstack((new_z, add_z))
@@ -152,6 +161,8 @@ def strip_outside_world(x: Iterable, z: Iterable) -> Tuple[np.ndarray]:
 
     If this is not done, the flow section could extend
     to the sides and mess up the polygon.
+
+    This fuction assumes that twin_points has just been applied.
 
     Example of undefined profile:
 
@@ -188,15 +199,11 @@ def strip_outside_world(x: Iterable, z: Iterable) -> Tuple[np.ndarray]:
     right = argmin <= ix  # boolean array indicating right
 
     # Highest framed elevation (avoiding profiles with undefined borders)
-    left_max = z[left].argmax()
-    right_max = z[right].argmax() + argmin
-    z_max = min(z[left_max], z[right_max])
-    left[:left_max] = False
-    right[right_max+1:] = False
-
-    # strip to the highest framed elevation
-    left = left & (z <= z_max)
-    right = right & (z <= z_max)
+    zmax = min(z[left].max(), z[right].max())
+    right_max_arg = argmin + (z[right] == zmax).argmax()
+    left_max_arg = argmin - (z[left] == zmax)[::-1].argmax()
+    right[right_max_arg+1:] = False
+    left[:left_max_arg] = False
 
     return x[left | right], z[left | right]
 
@@ -414,7 +421,7 @@ class Profile(pd.DataFrame):
     ) -> None:
         """
         Initialize :func:`~hydraulic_data(x, z, K, Js)` and set the friction law Js
-        
+
         Parameters
         ----------
         x: Iterable
@@ -571,9 +578,11 @@ class Profile(pd.DataFrame):
 DIR = Path(__file__).parent
 
 
-def test_Section():
+def test_Section(reverse=False):
 
     df = pd.read_csv(DIR / 'profile.csv')
+    if reverse:
+        df['Altitude [m s.m.]'] = np.array(df['Altitude [m s.m.]'])[::-1]
     profile = Profile(
         df['Dist. cumulée [m]'],
         df['Altitude [m s.m.]'],
@@ -597,8 +606,8 @@ def test_ClosedSection():
 
     df = pd.read_csv(DIR / 'closedProfile.csv')
     r = 10
-    K=33
-    Js=0.12/100
+    K = 33
+    Js = 0.12/100
     profile = Profile(
         (df.x+1)*r, (df.z+1)*r,
         K=K, Js=Js
@@ -639,22 +648,22 @@ def csv_to_csv(input_file: str,
                output_file: str,
                plot: bool) -> None:
 
-        if output_file is not None:
-            output_file = f"{Path(input_file).stem}-processed.csv"
+    if output_file is not None:
+        output_file = f"{Path(input_file).stem}-processed-hydrogibs.csv"
 
-        df = pd.read_csv(input_file)
-        K = 33
-        i = 0.12/100
-        profile = Profile(df.x, df.z, K, i)
-        profile.to_csv(output_file, index=False)
+    df = pd.read_csv(input_file)
+    K = 33
+    i = 0.12/100
+    profile = Profile(df.x, df.z, K, i)
+    profile.to_csv(output_file, index=False)
 
-        if plot is not None:
-            with plt.style.context("ggplot"):
-                fig, (ax1, ax2) = profile.plot()
-                ax1.plot(df.x, df.z, '-o', ms=8, lw=3, c='gray', zorder=0)
-                ax2.dataLim.x1 = profile.Q.max()
-                ax2.autoscale_view()
-                plt.show()
+    if plot is not None:
+        with plt.style.context("ggplot"):
+            fig, (ax1, ax2) = profile.plot()
+            ax1.plot(df.x, df.z, '-o', ms=8, lw=3, c='gray', zorder=0)
+            ax2.dataLim.x1 = profile.Q.max()
+            ax2.autoscale_view()
+            plt.show()
 
 
 @click.command()
@@ -663,19 +672,22 @@ def csv_to_csv(input_file: str,
 @click.option('-p', '--plot', default=False)
 @click.option('-t', '--test', default=False, is_flag=True)
 def main(input_file: str,
-            output_file: str,
-            plot: bool,
-            test: bool) -> None:
+         output_file: str,
+         plot: bool,
+         test: bool) -> None:
 
     if input_file is not None:
         csv_to_csv(input_file, output_file, plot)
         exit()
 
-    if test:
+    if test or (__name__ == "__main__" and not plot and not test and not input_file):
         test_minimal()
         test_Section()
+        test_Section(reverse=True)
         test_ClosedSection()
         plt.show()
 
+
 if __name__ == "__main__":
     main()
+

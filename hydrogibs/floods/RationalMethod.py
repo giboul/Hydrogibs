@@ -35,10 +35,11 @@ def rational_method(S: float,
 def main():
     from matplotlib import pyplot as plt
     t, Q = rational_method(S=1, Cr=0.6, tc=1)
-    plt.plot(t, Q)
-    plt.xlabel("Time [h]")
-    plt.ylabel("Flow [m$^3$/s]")
-    plt.show()
+    with plt.style.context('seaborn'):
+        plt.plot(t, Q)
+        plt.xlabel("Time [h]")
+        plt.ylabel("Flow [m$^3$/s]")
+        plt.show()
 
 
 if __name__ == "__main__":

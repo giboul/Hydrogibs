@@ -148,21 +148,21 @@ def fit_GEV_params(quantiles: np.ndarray,
     error_func : Callable
         The error function to use in the minimization
     """
-    if 'x0' not in optikwargs:
+    if optikwargs.get('x0') is None:
         optikwargs['x0'] = *fit_gumbel_params(quantiles), 0
-    if 'bounds' not in optikwargs:
+    if optikwargs.get('bounds') is None:
         optikwargs['bounds'] = default_bounds(quantiles)
 
     def error(params):
         return error_func(quantiles, GEV_inv(probabilities, *params))
 
-    return minimize(error, **optikwargs).x
+    return minimize(error, **optikwargs)
 
 
 def default_bounds(quantiles,
                    lower_xi=-float("inf"),
                    upper_xi=float("inf")) -> List[List[float]]:
-    r"""
+    """
     The default bounds to use for the fitting of the GEV parameters
 
     Parameters
@@ -170,9 +170,9 @@ def default_bounds(quantiles,
     quantiles : np.ndarray
         The quantiles to fit
     lower_xi : float
-        The lower bound for the third parameter (shape or $\xi$)
+        The lower bound for the third parameter (shape or 'xi')
     upper_xi : float
-        The upper bound for the third parameter (shape or $\xi$)
+        The upper bound for the third parameter (shape or 'xi')
 
     Returns
     -------
@@ -221,7 +221,7 @@ class YearlyMaxima:
             x0=self.gumbel_params,
             bounds=bounds,
             error_func=error_func
-        )
+        ).x
         bounds[2] = (-float("inf"), 0)
         self.weibull_params = fit_GEV_params(
             df.Q,
@@ -229,7 +229,7 @@ class YearlyMaxima:
             x0=self.gumbel_params,
             bounds=bounds,
             error_func=error_func
-        )
+        ).x
 
         error_dict = {
             kind: error_func(getattr(self, kind)(df.Q), self.p)
@@ -354,13 +354,13 @@ _xaxis_label = {
 
 
 def main():
-    df = pd.read_csv("hydrogibs/extreme/débits_mensuels_reyran.csv")
+    df = pd.read_csv("hydrogibs/test/extreme/débits_mensuels_reyran.csv")
     df.t = pd.to_datetime(df.t, format="%Y-%m-%d %H:%M:%S")
 
     ym = YearlyMaxima(df.Q)
     with plt.style.context("ggplot"):
         fig, ax = ym.plot(kind='return period')
-        ax.semilogx()
+        # ax.semilogx()
         plt.show()
 
 

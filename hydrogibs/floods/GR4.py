@@ -5,9 +5,10 @@ from dataclasses import dataclass
 from datetime import datetime
 from matplotlib.dates import DateFormatter
 from pathlib import Path
+from warnings import warn
 
 
-r"""
+"""
 This module is fully dedicated to the GR4h method
 
 It contains:
@@ -204,19 +205,15 @@ def gr4(catchment: Catchment, rain: Rain, volume_check=False) -> Event:
     dH = X3*V  # due to volume emptying
 
     # transfer function as array
-    q = catchment.transfer_function(X4, num=(time <= 2*X4).sum())
-    if q.size < 3:
-        print(
+    q = catchment.transfer_function(X4, num=(time-time[0] <= 2*X4).sum())
+    if q.size < 10:
+        warn(
             f"GR4 Warning: transfer function is {q=}\n"
-            f"It has only {(time <= 2*X4).sum() = } values"
+            f"It has only {(time <= 2*X4).sum() = } values. "
+            f"Consider lowering the timestep to dt <= {X4/2 = }"
         )
 
     QR = S * np.convolve(dR, q, 'full')[:time.size] * dt / 3.6
-    # ax1 = plt.subplot()
-    # ax1.plot(time, dTp)
-    # ax2 = ax1.twinx()
-    # ax2.plot(time, Qp)
-    # plt.show()
     QH = S * np.convolve(dH, q, 'full')[:time.size] * dt / 3.6
 
     if volume_check:
@@ -262,7 +259,6 @@ class Diagram:
 
     def __init__(self,
                  event: Event,
-                 style: str = "ggplot",
                  colors=("teal",
                          "k",
                          "indigo",
@@ -291,108 +287,106 @@ class Diagram:
         rmax = rain.max()
         Vmax = V.max()
 
-        with plt.style.context(style):
+        c1, c2, c3, c4, c5 = self.colors
 
-            c1, c2, c3, c4, c5 = self.colors
+        fig, (ax2, ax1) = plt.subplots(
+            figsize=figsize,
+            nrows=2, gridspec_kw=dict(
+                hspace=0,
+                height_ratios=[1, 3]
+            ),
+            dpi=dpi,
+            sharex=True
+        )
+        ax2.invert_yaxis()
+        ax2.xaxis.tick_top()
+        ax3 = ax1.twinx()
 
-            fig, (ax2, ax1) = plt.subplots(
-                figsize=figsize,
-                nrows=2, gridspec_kw=dict(
-                    hspace=0,
-                    height_ratios=[1, 3]
-                ),
-                dpi=dpi,
-                sharex=True
-            )
-            ax2.invert_yaxis()
-            ax2.xaxis.tick_top()
-            ax3 = ax1.twinx()
+        lineQ, = ax1.plot(
+            time,
+            Q,
+            lw=2,
+            color=c1,
+            label="Débit",
+            zorder=10
+        )
+        lineQp, = ax1.plot(
+            time,
+            Qp,
+            lw=1,
+            ls='-.',
+            color=c4,
+            label="Ruissellement",
+            zorder=9
+        )
+        lineQv, = ax1.plot(
+            time,
+            Qv,
+            lw=1,
+            ls='-.',
+            color=c5,
+            label="Écoulements hypodermiques",
+            zorder=9
+        )
+        ax1.set_ylabel("$Q$ (m³/s)", color=c1)
+        ax1.set_xlabel("t (h)")
+        ax1.set_xlim((tmin, tmax if tmax else 1))
+        ax1.set_ylim((0, Qmax*1.1 if Qmax else 1))
+        ax1.tick_params(colors=c1, axis='y')
+        if isinstance(tmin, datetime):
+            span = (tmax-tmin).total_seconds()
+            dateformat = None
+            if span < 3600 * 24 * 31:
+                dateformat = "%b-%d %H:%M"
+            if span < 3600 * 24:
+                dateformat = "%H:%M"
+            elif span < 3600:
+                dateformat = "%M"
+            if dateformat is not None:
+                ax1.xaxis.set_major_formatter(DateFormatter(dateformat))
+            ax1.set_xticks(ax1.get_xticks())
+            ax1.set_xticklabels(ax1.get_xticklabels(), rotation=45)
+            ax1.set_xlabel("t (dates)")
 
-            lineQ, = ax1.plot(
-                time,
-                Q,
-                lw=2,
-                color=c1,
-                label="Débit",
-                zorder=10
-            )
-            lineQp, = ax1.plot(
-                time,
-                Qp,
-                lw=1,
-                ls='-.',
-                color=c4,
-                label="Ruissellement",
-                zorder=9
-            )
-            lineQv, = ax1.plot(
-                time,
-                Qv,
-                lw=1,
-                ls='-.',
-                color=c5,
-                label="Écoulements hypodermiques",
-                zorder=9
-            )
-            ax1.set_ylabel("$Q$ (m³/s)", color=c1)
-            ax1.set_xlabel("t (h)")
-            ax1.set_xlim((tmin, tmax if tmax else 1))
-            ax1.set_ylim((0, Qmax*1.1 if Qmax else 1))
-            ax1.tick_params(colors=c1, axis='y')
-            if isinstance(tmin, datetime):
-                span = (tmax-tmin).total_seconds()
-                dateformat = None
-                if span < 3600 * 24 * 31:
-                    dateformat = "%b-%d %H:%M"
-                if span < 3600 * 24:
-                    dateformat = "%H:%M"
-                elif span < 3600:
-                    dateformat = "%M"
-                if dateformat is not None:
-                    ax1.xaxis.set_major_formatter(DateFormatter(dateformat))
-                ax1.set_xticks(ax1.get_xticks())
-                ax1.set_xticklabels(ax1.get_xticklabels(), rotation=45)
-                ax1.set_xlabel("t (dates)")
+        lineP, = ax2.step(
+            time,
+            rain,
+            lw=1.5,
+            color=c2,
+            label="Précipitations"
+        )
+        ax2.set_ylim((rmax*1.2 if rmax else 1, -rmax/20))
+        ax2.set_ylabel("$P$ (mm)")
 
-            lineP, = ax2.step(
-                time,
-                rain,
-                lw=1.5,
-                color=c2,
-                label="Précipitations"
-            )
-            ax2.set_ylim((rmax*1.2 if rmax else 1, -rmax/20))
-            ax2.set_ylabel("$P$ (mm)")
+        lineV, = ax3.plot(
+            time,
+            V,
+            ":",
+            color=c3,
+            label="Volume de stockage",
+            lw=1
+        )
+        ax3.set_ylim((0, Vmax*1.1 if Vmax else 1))
+        ax3.set_ylabel("$V$ (mm)", color=c3)
+        ax3.tick_params(colors=c3, axis='y')
+        ax3.grid(False)
 
-            lineV, = ax3.plot(
-                time,
-                V,
-                ":",
-                color=c3,
-                label="Volume de stockage",
-                lw=1
-            )
-            ax3.set_ylim((0, Vmax*1.1 if Vmax else 1))
-            ax3.set_ylabel("$V$ (mm)", color=c3)
-            ax3.tick_params(colors=c3, axis='y')
-            ax3.grid(False)
+        ax1.spines[['top', 'right']].set_visible(False)
+        ax2.spines['bottom'].set_visible(False)
+        ax3.spines[['left', 'bottom', 'top']].set_visible(False)
 
-            ax1.spines[['top', 'right']].set_visible(False)
-            ax2.spines['bottom'].set_visible(False)
-            ax3.spines[['left', 'bottom', 'top']].set_visible(False)
+        lines = (lineP, lineQ, lineQp, lineQv, lineV)
+        labs = [line.get_label() for line in lines]
+        ax3.legend(
+            lines,
+            labs,
+            loc="upper right",
+            frameon=True
+        )
 
-            lines = (lineP, lineQ, lineQp, lineQv, lineV)
-            labs = [line.get_label() for line in lines]
-            ax3.legend(
-                lines,
-                labs,
-                loc="upper right",
-                frameon=True
-            )
+        plt.tight_layout()
 
-            plt.tight_layout()
-
-            self.figure, self.axes, self.lines = fig, (ax1, ax2, ax3), lines
+        self.figure, self.axes, self.lines = fig, (ax1, ax2, ax3), lines
 
         if show:
             plt.show()
@@ -533,7 +527,7 @@ class App:
         if close_and_clear:
             plt.close()
 
-    def init_diagram(self, *args, **kwargs):
+    def init_diagram(self, style='ggplot', *args, **kwargs):
 
         from matplotlib.backends.backend_tkagg import (
             FigureCanvasTkAgg,
@@ -541,7 +535,8 @@ class App:
         )
         from matplotlib.backend_bases import key_press_handler
 
-        diagram = self.event.hydrograph(*args, **kwargs)
+        with plt.style.context(style):
+            diagram = self.event.hydrograph(*args, **kwargs)
 
         self.canvas = FigureCanvasTkAgg(diagram.figure, master=self.dframe)
         toolbar = NavigationToolbar2Tk(
@@ -586,12 +581,12 @@ class App:
         self.canvas.draw()
 
 
-def test(plot=False, app=False, datetime=False):
+def main(plot=False, app=False, datetime=False):
     # Custom test
     X1 = 57.6/100  # [-] dR = X1*dP
     X2 = 7.28  # [mm] Interception par la végétation
     X3 = 2.4/100  # [h^-1] dH = X3*V*dt, V = (1-X1)*I*dt
-    X4 = 0.38  # [h] temps de montée tm ≃ td
+    X4 = 2  # [h] temps de montée tm ≃ td
 
     t0 = 1  # h
     I0 = 66.7  # mm/h
@@ -601,30 +596,33 @@ def test(plot=False, app=False, datetime=False):
     # rainfall = df.Rainfall
     dt = 0.01
     if datetime is False:
-        time = np.arange(0, 24, step=dt)
-        rainfall = np.exp(-(time - 3)**2)
+        time = np.arange(0, 24, step=.01)
+        rainfall = np.exp(-((time - 5)/4)**2)
         rainfall = I0 * rainfall / np.trapz(x=time, y=rainfall)
     else:
         import pandas as pd
 
         df = pd.read_csv("hydrogibs/test/floods/rain.csv")
         rainfall = df.Rainfall
-        time = df.Date
+        time = pd.to_datetime(df.Date, format="%Y-%m-%d %H:%M:%S")
 
     rain = Rain(time, rainfall)
-    rain = BlockRain(I0, t0)
+    # rain = BlockRain(I0, t0)
     catchment = Catchment(X1, X2, X3, X4, surface=1.8)
 
-    event = rain @ catchment
-
-    if plot:
-        Qax, Pax, Vax = event.diagram(show=False).axes
-        Pax.set_title("Rimbaud")
-        plt.show()
-
     if app:
-        App(catchment, rain)
+        App(catchment, rain, figsize=(9, 5))
+    else:
+        event = rain @ catchment
+        if plot:
+            Qax, Pax, Vax = event.hydrograph(show=False).axes
+            Pax.set_title("Rimbaud")
+            plt.show()
 
 
 if __name__ == "__main__":
-    test(app=True)
+    main(
+        app=True,
+        # datetime=True
+        plot=True
+    )

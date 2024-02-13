@@ -1,19 +1,20 @@
 import numpy as np
 from matplotlib import pyplot as plt
-from ..constants import g
-from .misc import water_depth_solutions, conjugate
+from .utils import water_depth_solutions, conjugate
 
 
-def besse(x, y, slope, hn, hc):
-    ydot = slope * (1 - (hn / y) ** 3) / (1 - (hc / y) ** 3)
-    return ydot
+g = 9.81
 
 
-def besseEuler(x, y0, slope, hn, hc, stop=False):
+def bessel(x, y, slope, hn, hc):
+    return slope * (1 - (hn / y) ** 3) / (1 - (hc / y) ** 3)
+
+
+def bessel_euler(x, y0, slope, hn, hc, stop=False):
     y = np.full_like(x, float('nan'))
     y[0] = y0
     for n in range(0, len(x)-1):
-        v = y[n] + besse(x[n], y[n], slope, hn, hc)*(x[n+1] - x[n])
+        v = y[n] + bessel(x[n], y[n], slope, hn, hc)*(x[n+1] - x[n])
         if v >= hc and stop:
             break
         y[n+1] = v
@@ -51,8 +52,8 @@ class Ressaut:
             self.num,
             self.dx
         )
-        h1 = besseEuler(x1, self.h0, self.i1, hn1, hc)
-        h2 = besseEuler(x2, h1[-1], self.i2, hn2, hc, stop=True)
+        h1 = bessel_euler(x1, self.h0, self.i1, hn1, hc)
+        h2 = bessel_euler(x2, h1[-1], self.i2, hn2, hc, stop=True)
 
         slice = ~np.isnan(h2)
         h2 = h2[slice]
@@ -68,7 +69,7 @@ class Ressaut:
             tol=10**-3
         )
 
-        h3 = besseEuler(x3[::-1], hb, self.i2, hn2, hc)[::-1]
+        h3 = bessel_euler(x3[::-1], hb, self.i2, hn2, hc)[::-1]
         position = x2[np.argmin(np.abs(conjugate(self.q, h2) - h3[:len(h2)]))]
 
         self.result = (
@@ -88,7 +89,7 @@ class Ressaut:
 
         return self.result
 
-    def diagram(self, style='ggplot', show=False, **subplotkwargs):
+    def diagram(self, **subplotkwargs):
 
         (
             (x1, x2, x3),
@@ -116,43 +117,39 @@ class Ressaut:
         bed = bed[x <= xmax]
         x = x[x <= xmax]
 
-        with plt.style.context(style):
-            fig, ax = plt.subplots(**subplotkwargs)
+        fig, ax = plt.subplots(**subplotkwargs)
 
-            ax.plot(
-                (x2.max(), x3.min()),
-                (bed2[-1] + h2.max(), bed2[-1] + h3.min()),
-                'k'
-            )
-            ax.plot(x1, bed1 + h1, label='coursier')
-            ax.plot(x2, bed2 + h2, label='supercritique')
-            ax.plot(x3, bed3 + h3, label='subcritique')
-            ax.plot(x, bed + (self.q**2/self.g)**(1/3),
-                    ':', lw=1, label="h$_{cr}$")
-            bedx = bed[x1.size+x2.size:x1.size+x2.size+x2x.size]
-            ax.plot(x2x, bedx + h2x, '-.k', alpha=0.4)
-            ax.plot(x2x, bedx + conjugate(self.q, h2x), '--k', alpha=0.4)
-            plt.fill_between(x, bed, bed.min()*0.9,
-                             color='k', edgecolor='none',
-                             alpha=0.8, lw=2, label='lit')
-            plt.fill_between(
-                x, bed, bed + np.concatenate((h1, h2, h3)),
-                color='b', edgecolor='none', alpha=0.2, zorder=1
-            )
-            ax.set_xlabel("x (m)")
-            ax.set_ylabel("h (m.s.m.)")
+        ax.plot(
+            (x2.max(), x3.min()),
+            (bed2[-1] + h2.max(), bed2[-1] + h3.min()),
+            'k'
+        )
+        ax.plot(x1, bed1 + h1, label='coursier')
+        ax.plot(x2, bed2 + h2, label='supercritique')
+        ax.plot(x3, bed3 + h3, label='subcritique')
+        ax.plot(x, bed + (self.q**2/self.g)**(1/3),
+                ':', lw=1, label="h$_{cr}$")
+        bedx = bed[x1.size+x2.size:x1.size+x2.size+x2x.size]
+        ax.plot(x2x, bedx + h2x, '-.k', alpha=0.4)
+        ax.plot(x2x, bedx + conjugate(self.q, h2x), '--k', alpha=0.4)
+        plt.fill_between(x, bed, bed.min()*0.9,
+                            color='k', edgecolor='none',
+                            alpha=0.8, lw=2, label='lit')
+        plt.fill_between(
+            x, bed, bed + np.concatenate((h1, h2, h3)),
+            color='b', edgecolor='none', alpha=0.2, zorder=1
+        )
+        ax.set_xlabel("x (m)")
+        ax.set_ylabel("h (m.s.m.)")
 
-            eps, k = 0.1, 4
-            # ax.set_xlim(self.x0, k*self.position)
-            # ax.set_ylim(
-            #     (1-eps)*h1.min(),
-            #     (1+eps) * h3[x3 < k*self.position].max()
-            # )
-            ax.legend(loc="center right")
+        eps, k = 0.1, 4
+        # ax.set_xlim(self.x0, k*self.position)
+        # ax.set_ylim(
+        #     (1-eps)*h1.min(),
+        #     (1+eps) * h3[x3 < k*self.position].max()
+        # )
+        ax.legend(loc="center right")
 
-        if show:
-            plt.tight_layout()
-            plt.show()
         return fig, ax
 
     def _set_flaw(self, chezy_C, ms_K):
@@ -177,9 +174,14 @@ class Ressaut:
         return x1, x2, dx
 
 
-if __name__ == "__main__":
+def main():
     r = Ressaut(
         q=10, i1=0.05, i2=0.002, p=0.5,
         h0=2, ms_K=30, x0=0, xt=10, dx=0.25
     )
-    r.diagram(show=True, figsize=(10, 5))
+    r.diagram(figsize=(10, 5))
+    plt.show()
+
+
+if __name__ == "__main__":
+    main()

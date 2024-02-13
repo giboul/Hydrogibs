@@ -67,7 +67,7 @@ class Riemann:
         return fig
 
 
-if __name__ == "__main__":
+def main():
     hmax = 1
     tf = 50
     _t = np.linspace(0, tf)
@@ -75,3 +75,7 @@ if __name__ == "__main__":
     h[_t < 0.2*tf] = 0.5 * hmax
     h[_t > 0.8*tf] = 0.3 * hmax
     Riemann(_t, h, 2 * np.pi/180).calculate().diagram()
+
+
+if __name__ == "__main__":
+    main()

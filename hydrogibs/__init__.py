@@ -1,9 +1,11 @@
-"""
-hydrogibs
-
-This package is meant to use analytic hydrology and fluid mechanics.
-It does not make use of large programs of the finite element type.
-
-The source material is publicly availabel and can be found on
-Christophe Ancey's website https://en.ancey.ch/.
-"""
+from .extreme.yearly_maxima import YearlyMaxima
+from .floods import GR4
+from .fluvial.profile import Profile
+from .fluvial.shields import (
+    reynolds,
+    adimensional_shear,
+    adimensional_diameter,
+    smart_jaeggi,
+    ShieldsDiagram
+)
+from .utils.ressaut import Ressaut

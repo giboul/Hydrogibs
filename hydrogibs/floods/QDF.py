@@ -1,8 +1,6 @@
 import numpy as np
-from ..misc.misc import Turraza
 from typing import Literal
 from matplotlib import pyplot as plt
-from .constants import QDFcoefs_mean, QDFcoefs_threshold
 from warnings import warn
 from scipy.optimize import least_squares
 from pathlib import Path
@@ -10,14 +8,9 @@ from pathlib import Path
 
 def _arange_QDFcoefs(path):
     with open(Path(__file__).parent / path) as file:
-        data = [
-            line.split(',')
-            for line in file.read().splitlines()[1:]
-        ]
-        data = [
-            (line[0], *map(float, line[1:]))
-            for line in data
-        ]
+        data = file.read().splitlines()[1:]
+    data = [line.split(',') for line in data]
+    data = [(line[0], *map(float, line[1:])) for line in data]
     return {
         name: dict(A=alphas[:3], B=alphas[3:6], C=alphas[6:])
         for name, *alphas in data
@@ -158,10 +151,26 @@ class QDFdiagram:
         canvas.draw()
 
 
+def turraza(S, L, im):
+    """
+    Empirical estimation of the concentration time of a catchment
+
+    Args:
+        S (float) [km^2]: Catchment area
+        L (float) [km]: Longest hydraulic path's length
+        im (float) [%]: weighted average thalweg slope,
+                        should be according to 'thalweg_slope' function
+
+    Returns:
+        tc (float) [h]: concentration time
+    """
+    return 0.108*np.sqrt((S*L)**3/im)
+
+
 def qdf(catchment, rain):
 
     constants_threshold = list(
-        QDFcoefs_threshold[catchment.model.capitalize()].values()
+        QDFcoefs_thres[catchment.model.capitalize()].values()
     )
     constants_mean = list(
         QDFcoefs_mean[catchment.model.capitalize()].values()
@@ -170,7 +179,7 @@ def qdf(catchment, rain):
     if hasattr(catchment, "specific_duration"):
         ds = catchment.specific_duration
     else:
-        ds = Turraza(
+        ds = turraza(
             catchment.surface,
             catchment.length,
             catchment.mean_slope
@@ -215,8 +224,10 @@ def qdf(catchment, rain):
 
 
 def calc_coefs(constants, d, ds):
-    return np.array([1/(a1*d/ds + a2) + a3
-                     for a1, a2, a3 in constants])
+    return np.array([
+        1/(a1*d/ds + a2) + a3
+        for a1, a2, a3 in constants
+    ])
 
 
 def discharge(Q10, Qsp, T, constants, d, ds):
@@ -230,3 +241,29 @@ def discharge(Q10, Qsp, T, constants, d, ds):
             f"{T = :.0f} is not within [0.5:1000] years"
         )
     return Q10 + Qsp * Q
+
+
+def main(plot=False):
+    # Estimation of Q(T=100) according to the QdF method
+    catchment = Catchment(model="florac", specific_duration=1)
+    rain = Rain(
+        duration=1,
+        return_period=100,
+        specific_discharge=1.3,
+        discharge_Q10=1.3,
+        dt=0.01
+    )
+
+    # QDF.App(rain=rain, catchment=catchment, style="ggplot")
+    event = rain @ catchment
+
+    if plot:
+        with plt.style.context('seaborn'):
+            plt.plot(event.time, event.discharge)
+            plt.xlabel("Time [h]")
+            plt.ylabel("Discharge [m$^3$/s]")
+            plt.show()
+
+
+if __name__ == "__main__":
+    main(plot=True)
