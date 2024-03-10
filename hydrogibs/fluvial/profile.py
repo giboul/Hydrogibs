@@ -1,10 +1,6 @@
 """
-Script for estimating the h-Q relationship 
-from a given profile (according to GMS). 
-
-The object 'Profile' stores the hydraulic data as 
-a pandas.DataFrame and creates a complete diagram 
-with the .plot() method.
+Script for estimating the h-Q relationship from a given profile (according to GMS). 
+The object 'Profile' stores the hydraulic data as a pandas.DataFrame and creates a complete diagram with the .plot() method.
 
 The following friction laws are supported here :
     - Gauckler-Manning-Strickler
@@ -15,6 +11,7 @@ Run script along with the following files to test:
     - profile.csv
     - closedProfile.csv
     - minimalProfile.csv
+
 It will plot three diagrams with :
     - Limits enclosing the problem
     - The water_depth-discharge relation
@@ -70,10 +67,10 @@ def equivalent_laws(Rh: float,
     if K is not None:
         C = K * Rh**(1/6)
         f = 8*g / (K**2 * Rh**(1/3))
-    if C is not None:
+    elif C is not None:
         K = C / Rh**(1/6)
         f = 8 * g / C**2
-    if f is not None:
+    elif f is not None:
         K = (8*g/f)**0.5 / Rh**(1/6)
         C = (8*g/f)**0.5
 
@@ -139,8 +136,8 @@ def twin_points(x_arr: Iterable, z_arr: Iterable) -> Tuple[np.ndarray]:
             continue
 
         add_z = np.sort(z_arr[(min(z1, z2) < z_arr) & (z_arr < max(z1, z2))])
-        if z2 < z1:  # if descending,
-            add_z = add_z[::-1]  # reverse order
+        if z2 < z1:  # if descending, reverse order
+            add_z = add_z[::-1]
         add_x = x1 + (x2 - x1) * (add_z - z1)/(z2 - z1)
         add_i = np.full_like(add_z, i, dtype=np.int32)
 
@@ -300,7 +297,9 @@ def profile_diagram(
     Q: Iterable,
     Qcr: Iterable,
     fig=None,
-    axes=None
+    axes=None,
+    *args,
+    **kwargs
 ) -> Tuple[Figure, Tuple[plt.Axes, plt.Axes]]:
     """
     Plot riverbed cross section and Q(h) in a sigle figure
@@ -324,7 +323,7 @@ def profile_diagram(
         discharge vs. water depth
     """
     if fig is None:
-        fig = plt.figure()
+        fig = plt.figure(*args, **kwargs)
     if axes is None:
         ax1 = fig.add_subplot()
         ax0 = fig.add_subplot()
@@ -449,7 +448,7 @@ class Profile(pd.DataFrame):
         if fric_kwargs:
             Js = fric_kwargs.pop("Js")
             if isinstance(Js, float):
-                Js = np.full_like(self.x, Js)
+                Js = np.full(self.x.size, Js)
             K, C, f = equivalent_laws(self.Rh, **fric_kwargs)
             self["v"] = GMS(K, self.Rh, Js)
             self["Q"] = self.S * self.v
@@ -503,7 +502,7 @@ class Profile(pd.DataFrame):
             # Find lower and upper bounds
             argsup = mask.argmax()
             arginf = argsup - 1
-            # interpolate
+            # Interpolate
             r = (h_interp - h[arginf]) / (h[argsup] - h[arginf])
             Bi = r * (B[argsup] - B[arginf]) + B[arginf]
             ds = (h_interp - h[arginf]) * (Bi + B[arginf])/2
@@ -578,9 +577,9 @@ class Profile(pd.DataFrame):
 DIR = Path(__file__).parent
 
 
-def test_Section(reverse=False):
+def test_Section(reverse: bool =False):
 
-    df = pd.read_csv(DIR / 'profile.csv')
+    df = pd.read_csv(DIR / 'test profiles' / 'profile.csv')
     if reverse:
         df['Altitude [m s.m.]'] = np.array(df['Altitude [m s.m.]'])[::-1]
     profile = Profile(
@@ -604,7 +603,7 @@ def test_Section(reverse=False):
 
 def test_ClosedSection():
 
-    df = pd.read_csv(DIR / 'closedProfile.csv')
+    df = pd.read_csv(DIR / 'test profiles' / 'closedProfile.csv')
     r = 10
     K = 33
     Js = 0.12/100
@@ -633,7 +632,7 @@ def test_ClosedSection():
 
 
 def test_minimal():
-    df = pd.read_csv(DIR / "minimalProfile.csv")
+    df = pd.read_csv(DIR / 'test profiles' / "minimalProfile.csv")
     with plt.style.context("ggplot"):
         prof = Profile(df.x, df.z, K=33, Js=0.12/100)
         fig, (ax1, ax2) = prof.plot()
@@ -645,11 +644,15 @@ def test_minimal():
 
 
 def csv_to_csv(input_file: str,
-               output_file: str,
-               plot: bool) -> None:
+               output_file: str = None,
+               plot: bool = False) -> None:
 
-    if output_file is not None:
-        output_file = f"{Path(input_file).stem}-processed-hydrogibs.csv"
+    input_file = Path(input_file)
+    if output_file is None:
+        output_file = input_file.parent / input_file.stem
+        output_file = output_file / "-processed-hydrogibs.csv"
+    else:
+        output_file = Path(output_file)
 
     df = pd.read_csv(input_file)
     K = 33
