@@ -6,4 +6,4 @@ pyproject.toml
 test.*
 Civil-*
 build/
-publish.sh
+publi.sh

@@ -17,11 +17,13 @@ It will plot three diagrams with :
     - The water_depth-discharge relation
     - The water_depth-critical_discharge relation
 """
+# Note: use tkinter to select files via file explorer
 from typing import Iterable, Tuple
 from pathlib import Path
 from scipy.interpolate import interp1d
 from matplotlib import pyplot as plt
 from matplotlib.figure import Figure
+from tkinter import filedialog, Tk
 import pandas as pd
 import numpy as np
 import click
@@ -577,69 +579,25 @@ class Profile(pd.DataFrame):
 DIR = Path(__file__).parent
 
 
-def test_Section(reverse: bool =False):
+def visualize(path: Path, xcol: str = 'Dist. cumulée [m]', zcol: str = 'Altitude [m s.m.]'):
 
-    df = pd.read_csv(DIR / 'test profiles' / 'profile.csv')
-    if reverse:
-        df['Altitude [m s.m.]'] = np.array(df['Altitude [m s.m.]'])[::-1]
+    df = pd.read_csv(path)
     profile = Profile(
-        df['Dist. cumulée [m]'],
-        df['Altitude [m s.m.]'],
-        f=1,
-        Js=0.12/100
+        df[xcol],
+        df[zcol],
+        K=float(input("Manning-Strickler coefficient: [33] ") or 33),
+        Js=float(input("Bed slope: [1.2/10000] ") or 1.2/1000)
     )
 
     with plt.style.context('ggplot'):
         fig, (ax1, ax2) = profile.plot()
-        ax1.plot(df['Dist. cumulée [m]'],
-                 df['Altitude [m s.m.]'],
+        ax1.plot(df[xcol],
+                 df[zcol],
                  '-o', ms=8, c='gray', zorder=0,
                  lw=3, label="Profil complet")
         ax2.dataLim.x1 = profile.Q.max()
         ax2.autoscale_view()
         ax2.set_ylim(ax1.get_ylim()-profile.z.min())
-        fig.show()
-
-
-def test_ClosedSection():
-
-    df = pd.read_csv(DIR / 'test profiles' / 'closedProfile.csv')
-    r = 10
-    K = 33
-    Js = 0.12/100
-    profile = Profile(
-        (df.x+1)*r, (df.z+1)*r,
-        K=K, Js=Js
-    )
-
-    with plt.style.context('ggplot'):
-        fig, (ax1, ax2) = profile.plot()
-        ax2.dataLim.x1 = profile.Q.max()
-        ax2.autoscale_view()
-
-        # Analytical solution
-        theta = np.linspace(1e-10, np.pi)
-        S = theta*r**2 - r**2*np.cos(theta)*np.sin(theta)
-        P = 2*theta*r
-        Q = K*(S/P)**(2/3)*S*Js**0.5
-        h = r * (1-np.cos(theta))
-        ax2.plot(Q, h, alpha=0.5, label="$y_0$ (analytique)")
-
-        ax1.legend(loc="upper left").remove()
-        ax2.legend(loc=(0.2, 0.6)).get_frame().set_alpha(1)
-        ax2.set_ylim(ax1.get_ylim()-profile.z.min())
-        fig.show()
-
-
-def test_minimal():
-    df = pd.read_csv(DIR / 'test profiles' / "minimalProfile.csv")
-    with plt.style.context("ggplot"):
-        prof = Profile(df.x, df.z, K=33, Js=0.12/100)
-        fig, (ax1, ax2) = prof.plot()
-        ax1.plot(df.x, df.z, '-o', ms=8, lw=3, c='gray', zorder=0)
-        ax2.dataLim.x1 = prof.Q.max()
-        ax2.set_ylim(ax1.get_ylim()-prof.z.min())
-        ax2.autoscale_view()
         fig.show()
 
 
@@ -681,14 +639,21 @@ def main(input_file: str,
 
     if input_file is not None:
         csv_to_csv(input_file, output_file, plot)
-        exit()
 
-    if test or (__name__ == "__main__" and not plot and not test and not input_file):
-        test_minimal()
-        test_Section()
-        test_Section(reverse=True)
-        test_ClosedSection()
+    for f in select_files(Path(__file__).parent/"test profiles"):
+        x = input("Column name for x-coordinates: ['Dist. cumulée [m]'] ")
+        z = input("Column name for z-coordinates: ['Altitude [m s.m.]'] ")
+        visualize(f, x, z)
         plt.show()
+
+
+def select_files(def_path: Path = Path('.')):
+    """Select a directory, select the files then return paths."""
+    Tk().withdraw()
+    print(def_path)
+    directory = filedialog.askdirectory(initialdir=def_path)
+    files = filedialog.askopenfilenames(initialdir=directory)
+    return [Path(directory) / f for f in files]
 
 
 if __name__ == "__main__":

@@ -433,7 +433,7 @@ class App:
                  catchment: Catchment,
                  rain: Rain,
                  title: str = None,
-                 appearance: str = "light",
+                 appearance: str = "dark",
                  color_theme: str = "blue",
                  style: str = "seaborn",
                  close_and_clear: bool = True,
