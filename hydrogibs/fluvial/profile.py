@@ -17,16 +17,16 @@ It will plot three diagrams with :
     - The water_depth-discharge relation
     - The water_depth-critical_discharge relation
 """
-# Note: use tkinter to select files via file explorer
 from typing import Iterable, Tuple
 from pathlib import Path
+
 from scipy.interpolate import interp1d
 from matplotlib import pyplot as plt
 from matplotlib.figure import Figure
-from tkinter import filedialog, Tk
+from tkinter import filedialog, Tk, Frame, Entry, Label, Button, OptionMenu, StringVar
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 import pandas as pd
 import numpy as np
-import click
 
 
 g = 9.81
@@ -88,7 +88,7 @@ def equivalent_laws(Rh: float,
 
 
 def twin_points(x_arr: Iterable, z_arr: Iterable) -> Tuple[np.ndarray]:
-    """
+    r"""
     Duplicate an elevation to every crossing of its level and the (x, z) curve.
     This will make for straight water tables when filtering like this :
     >>> z_masked = z[z <= z[ix]]  # array with z[ix] at its borders
@@ -154,7 +154,7 @@ def twin_points(x_arr: Iterable, z_arr: Iterable) -> Tuple[np.ndarray]:
 
 
 def strip_outside_world(x: Iterable, z: Iterable) -> Tuple[np.ndarray]:
-    """
+    r"""
     Return the same arrays without the excess borders
     (where the flow section width is unknown).
 
@@ -330,6 +330,8 @@ def profile_diagram(
         ax1 = fig.add_subplot()
         ax0 = fig.add_subplot()
         ax0.patch.set_visible(False)
+    else:
+        ax1, ax0 = axes
 
     x = np.array(x, dtype=np.float32)
     z = np.array(z, dtype=np.float32)
@@ -576,45 +578,20 @@ class Profile(pd.DataFrame):
         return fig, (ax1, ax2)
 
 
-DIR = Path(__file__).parent
-
-
-def visualize(path: Path, xcol: str = 'Dist. cumulée [m]', zcol: str = 'Altitude [m s.m.]'):
-
-    df = pd.read_csv(path)
-    profile = Profile(
-        df[xcol],
-        df[zcol],
-        K=float(input("Manning-Strickler coefficient: [33] ") or 33),
-        Js=float(input("Bed slope: [1.2/10000] ") or 1.2/1000)
-    )
-
-    with plt.style.context('ggplot'):
-        fig, (ax1, ax2) = profile.plot()
-        ax1.plot(df[xcol],
-                 df[zcol],
-                 '-o', ms=8, c='gray', zorder=0,
-                 lw=3, label="Profil complet")
-        ax2.dataLim.x1 = profile.Q.max()
-        ax2.autoscale_view()
-        ax2.set_ylim(ax1.get_ylim()-profile.z.min())
-        fig.show()
-
-
 def csv_to_csv(input_file: str,
                output_file: str = None,
-               plot: bool = False) -> None:
+               plot: bool = False,
+               K:float = 33,
+               i:float = 0.12/100) -> None:
 
     input_file = Path(input_file)
     if output_file is None:
         output_file = input_file.parent / input_file.stem
-        output_file = output_file / "-processed-hydrogibs.csv"
+        output_file = output_file / "-processed.csv"
     else:
         output_file = Path(output_file)
 
     df = pd.read_csv(input_file)
-    K = 33
-    i = 0.12/100
     profile = Profile(df.x, df.z, K, i)
     profile.to_csv(output_file, index=False)
 
@@ -627,35 +604,173 @@ def csv_to_csv(input_file: str,
             plt.show()
 
 
-@click.command()
-@click.option('-i', '--input-file')
-@click.option('-o', '--output-file')
-@click.option('-p', '--plot', default=False)
-@click.option('-t', '--test', default=False, is_flag=True)
-def main(input_file: str,
-         output_file: str,
-         plot: bool,
-         test: bool) -> None:
-
-    if input_file is not None:
-        csv_to_csv(input_file, output_file, plot)
-
-    for f in select_files(Path(__file__).parent/"test profiles"):
-        x = input("Column name for x-coordinates: ['Dist. cumulée [m]'] ")
-        z = input("Column name for z-coordinates: ['Altitude [m s.m.]'] ")
-        visualize(f, x, z)
-        plt.show()
+def select_file():
+    """Select the path of the disired file"""
+    root = Tk()
+    root.withdraw()
+    return filedialog.askopenfilename(parent=root, title='Choose file')
 
 
-def select_files(def_path: Path = Path('.')):
-    """Select a directory, select the files then return paths."""
-    Tk().withdraw()
-    print(def_path)
-    directory = filedialog.askdirectory(initialdir=def_path)
-    files = filedialog.askopenfilenames(initialdir=directory)
-    return [Path(directory) / f for f in files]
+def app():
+
+    params = dict(
+        ipath = Path(__file__).parent / "profiles" / "profile.csv",
+        opath = Path(__file__).parent / "profiles" / "profile-processed.csv",
+        xcol="Column name for x-coordinates",
+        zcol="Column name for z-coordinates",
+        friction=33,
+        friclaw="GMS",
+        slope=1.2/1000,
+        pandas_kwargs = dict()
+    )
+
+    # Setting up window and frame
+    window = Tk()
+    window.title("Courbe de tarage")
+    screen_width = window.winfo_screenwidth()
+    screen_height = window.winfo_screenheight()
+
+    width = int(screen_width*0.5)
+    height = int(screen_height*0.5)
+    left = (screen_width - width) // 2
+    top = (screen_height - height) // 2
+    window.geometry(f"{width}x{height}+{left}+{top}")
+
+    frame = Frame(window, borderwidth=10)
+    frame.pack(fill='both', expand=True)
+    for col, w in enumerate((1, 1, 3, 1, 1)):
+        frame.columnconfigure(col, pad=10, weight=w)
+    for row, w in enumerate((3, 3, 3, 3, 3, 1)):
+        frame.rowconfigure(row, pad=5, weight=w)
+
+    # Input file path and arguments to pandas
+    def validate_kwargs(P):
+        if P == '':
+            return True
+
+        try:
+            kwargs = eval(f"dict({P})")
+        except:
+            filetxt.config(bg="red")
+            return True
+
+        kwargs["path"] = Path(kwargs["path"])
+        test = kwargs["path"].is_file()
+        if test is False:
+            filetxt.config(bg="red")
+        else:
+            filetxt.config(bg="white")
+            params["ipath"] = kwargs.pop("path")
+            params["pandas_kwargs"] = kwargs
+
+        return True
+
+    pd_lab = Label(frame, text="pd.read_csv(")
+    pd_endlab = Label(frame, text=")")
+
+    filetxt = Entry(frame)
+    filetxt.insert(0, f"path='{params["ipath"]}'")
+    filetxt.config(validate="key", vcmd=(frame.register(validate_kwargs), "%P"))
+
+    # For changing files within the app
+    def update_path():
+        path = select_file()
+        filetxt.delete(0, 'end')
+        filetxt.insert(0, f"path='{path}'")
+        params["ipath"] = path
+    navigatebutt = Button(frame, text="Navigate files", command=lambda: update_path())
+
+    # Specifying the columns to use for coordinates reading
+    def update_dict(key: str):
+        def uptd(val):
+            params[key] = val
+            return True
+        return (frame.register(uptd), "%P")
+    xcollab = Label(frame, text=params["xcol"])
+    xcoltxt = Entry(frame, validate="key", vcm=update_dict("xcol"))
+    xcoltxt.insert(0, 'Dist. cumulée [m]')
+
+    zcollab = Label(frame, text=params["zcol"])
+    zcoltxt = Entry(frame, validate="key", vcm=update_dict("zcol"))
+    zcoltxt.insert(0, 'Altitude [m.s.m.]')
+
+    # Friction parmeters widgets
+    fricvar = StringVar(frame)
+    fricvar.set(params["friclaw"])
+
+    def update_friclaw(val):
+        params["friclaw"] = val
+    friclab = OptionMenu(frame, fricvar, "GMS", "Chézy", "Darcy", command=update_friclaw)
+    fric_coefs = {"GMS": "K", "Chézy": "C", "Darcy": "f"}
+    frictxt = Entry(frame, validate="key", vcm=update_dict("friction"))
+    frictxt.insert(0, 33)
+
+    # Bed slope entry widget
+    slopelab = Label(frame, text="Slope")
+    slopetxt = Entry(frame, validate="key", vcm=update_dict("slope"))
+    slopetxt.insert(0, params["slope"])
+
+    # For saving the results in a csv table
+    def save_df():
+        df = pd.read_csv(params["ipath"])
+        profile = Profile(df[params["xcol"]],
+                    df[params["zcol"]],
+                    Js=float(params["slope"]),
+                    **{fric_coefs[params["friclaw"]]: float(params["friction"])})
+        profile.to_csv(params["opath"])
+    savebutt = Button(frame, text="Sauvegarder les résultats", command=save_df)
+    savetxt = Entry(frame)
+    savetxt.insert(0, params["opath"])
+
+    # Widget Placement
+    pd_lab.grid(row=0, column=1, sticky="NSE")
+    pd_endlab.grid(row=0, column=3, sticky="NSW")
+    filetxt.grid(row=0, column=2, sticky="NSWE")
+    navigatebutt.grid(row=0, column=4)
+
+    xcollab.grid(row=1, column=0, sticky="NSWE")
+    xcoltxt.grid(row=1, column=1, sticky="NSWE")
+
+    zcollab.grid(row=2, column=0, sticky="NSWE")
+    zcoltxt.grid(row=2, column=1, sticky="NSWE")
+
+    friclab.grid(row=3, column=0, sticky="NSWE")
+    frictxt.grid(row=3, column=1, sticky="NSWE")
+
+    slopelab.grid(row=4, column=0, sticky="NSWE")
+    slopetxt.grid(row=4, column=1, sticky="NSWE")
+
+    savebutt.grid(row=5, column=0, sticky="NSWE")
+    savetxt.grid(row=5, column=1, sticky="NSWE")
+
+    # Figure setup
+    with plt.style.context('ggplot'):
+        fig = plt.figure()
+        ax1 = fig.add_subplot()
+        ax2 = fig.add_subplot()
+
+    def replot(event=None):
+        with plt.style.context('ggplot'):
+            ax1.cla()
+            ax2.cla()
+            ax2.patch.set_visible(False)
+            df = pd.read_csv(params["ipath"], **params["pandas_kwargs"])
+            profile = Profile(df[params["xcol"]],
+                        df[params["zcol"]],
+                        Js=float(params["slope"]),
+                        **{fric_coefs[params["friclaw"]]: float(params["friction"])})
+            profile.plot(fig=fig, axes=(ax1, ax2))
+            canvas.draw()
+
+    canvas = FigureCanvasTkAgg(fig, frame)
+    toolbar_frame = Frame(frame)
+    toolbar = NavigationToolbar2Tk(canvas, toolbar_frame)
+    toolbar_frame.grid(row=5, column=0, columnspan=2, sticky="NSWE")
+    canvas.get_tk_widget().grid(row=1, column=2, rowspan=5, columnspan=3, sticky="NSWE")
+    canvas.mpl_connect("button_press_event", replot)
+
+    window.mainloop()
 
 
 if __name__ == "__main__":
-    main()
-
+    app()
