@@ -17,7 +17,7 @@ It will plot three diagrams with :
     - The water_depth-discharge relation
     - The water_depth-critical_discharge relation
 """
-from typing import Iterable, Tuple, Literal
+from typing import Iterable, Tuple
 from pathlib import Path
 
 from scipy.interpolate import interp1d
@@ -27,6 +27,8 @@ from tkinter import filedialog, Tk, Frame, Entry, Label, Button, OptionMenu, Str
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 import pandas as pd
 import numpy as np
+
+from time import sleep
 
 
 g = 9.81
@@ -374,7 +376,7 @@ def profile_diagram(
     ax0.grid(False)
 
     # plotting 'RG' & 'RD'
-    ztxt = z.mean()
+    ztxt = (z.max() + z.min())/2
     ax0.text(x.min(), ztxt, 'RG')
     ax0.text(x.max(), ztxt, 'RD', ha='right')
 
@@ -670,10 +672,10 @@ def app():
 
     # Initialize main frame
     frame = Frame(window, borderwidth=10)
-    frame.pack(fill='both')
-    for col, w in enumerate((5, 5, 1, 50, 5)):
+    frame.pack(fill='both', expand=True)
+    for col, w in enumerate((5, 5, 50, 1, 5)):
         frame.columnconfigure(col, pad=10, weight=w)
-    for row, w in enumerate((1, 3, 3, 3, 3, 3)):
+    for row, w in enumerate((1, 3, 3, 3, 3, 3, 2)):
         frame.rowconfigure(row, pad=5, weight=w)
 
     # Input file path and arguments to pandas
@@ -698,8 +700,8 @@ def app():
 
         return True
 
-    # Simple lable
-    lab1 = Label(frame, text="Click on figure to reload it")
+    # Simple label
+    lab1 = Label(frame, text="Click on figure or\n hit enter to reload it")
     lab1.grid(row=0, column=0, sticky="NSWE")
 
     # Widgets for file loading
@@ -716,6 +718,7 @@ def app():
         filetxt.delete(0, 'end')
         filetxt.insert(0, f"path='{path}'")
         params["ipath"] = path
+        replot()
     navigatebutt = Button(frame, text="Navigate files", command=lambda: update_path())
 
     # Specifying the columns to use for coordinates reading
@@ -740,24 +743,32 @@ def app():
         params["friclaw"] = val
     friclab = OptionMenu(frame, fricvar, "GMS", "Chézy", "Darcy", command=update_friclaw)
     fric_coefs = {"GMS": "K", "Chézy": "C", "Darcy": "f"}
-    frictxt = Entry(frame, validate="key", vcm=update_dict("friction"))
+    frictxt = Entry(frame, validate="key", vcm=update_dict("friction"), justify="right")
     frictxt.insert(0, 33)
 
     # Bed slope entry widget
     slopelab = Label(frame, text="Slope")
-    slopetxt = Entry(frame, validate="key", vcm=update_dict("slope"))
+    slopetxt = Entry(frame, validate="key", vcm=update_dict("slope"), justify="right")
     slopetxt.insert(0, params["slope"])
 
     # For saving the results in a csv table
+    def validate_opath(P):
+        P = Path(P)
+        if P.parent.is_dir():
+            params["opath"] = P
+            savetxt.config(bg="white")
+        else:
+            savetxt.config(bg="red")
+        return True
     def save_df():
         df = pd.read_csv(params["ipath"])
         profile = Profile(df[params["xcol"]],
-                    df[params["zcol"]],
-                    Js=float(params["slope"]),
-                    **{fric_coefs[params["friclaw"]]: float(params["friction"])})
+                          df[params["zcol"]],
+                          Js=float(params["slope"]),
+                          **{fric_coefs[params["friclaw"]]: float(params["friction"])})
         profile.to_csv(params["opath"])
-    savebutt = Button(frame, text="Sauvegarder les résultats", command=save_df)
-    savetxt = Entry(frame)
+    savebutt = Button(frame, text="Save results", command=save_df)
+    savetxt = Entry(frame, validate="key", vcmd=(frame.register(validate_opath), "%P"))
     savetxt.insert(0, params["opath"])
 
     # Widget Placement
@@ -789,10 +800,26 @@ def app():
 
     def replot(event=None):
         with plt.style.context('ggplot'):
+            # Reinitiate axes
             ax1.cla()
             ax2.cla()
             ax2.patch.set_visible(False)
             df = pd.read_csv(params["ipath"], **params["pandas_kwargs"])
+            # Check that columns exist
+            nocols = False
+            if params["xcol"] not in df.columns:
+                xcoltxt.config(bg="red")
+                nocols = True
+            else:
+                xcoltxt.config(bg="white")
+            if params["zcol"] not in df.columns:
+                zcoltxt.config(bg="red")
+                nocols = True
+            else:
+                zcoltxt.config(bg="white")
+            if nocols:
+                return False
+            # Compute and plot profile data
             profile = Profile(df[params["xcol"]],
                         df[params["zcol"]],
                         Js=float(params["slope"]),
@@ -803,8 +830,8 @@ def app():
     canvas = FigureCanvasTkAgg(fig, frame)
     toolbar_frame = Frame(frame)
     toolbar = NavigationToolbar2Tk(canvas, toolbar_frame)
-    toolbar_frame.grid(row=5, column=0, columnspan=2, sticky="NSWE")
-    canvas.get_tk_widget().grid(row=1, column=2, rowspan=5, columnspan=3, sticky="NSWE")
+    toolbar_frame.grid(row=6, column=0, columnspan=2, sticky="NW")
+    canvas.get_tk_widget().grid(row=1, column=2, rowspan=6, columnspan=3, sticky="NSWE")
     canvas.mpl_connect("button_press_event", replot)
     window.bind_all('<Return>', replot)
 
