@@ -669,7 +669,7 @@ def app():
     pd_endlab = Label(frame, text=")")
 
     filetxt = Entry(frame)
-    filetxt.insert(0, f"path='{params["ipath"]}'")
+    filetxt.insert(0, f"path='{params['ipath']}'")
     filetxt.config(validate="key", vcmd=(frame.register(validate_kwargs), "%P"))
 
     # For changing files within the app
