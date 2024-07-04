@@ -17,7 +17,7 @@ It will plot three diagrams with :
     - The water_depth-discharge relation
     - The water_depth-critical_discharge relation
 """
-from typing import Iterable, Tuple
+from typing import Iterable, Tuple, Literal
 from pathlib import Path
 
 from scipy.interpolate import interp1d
@@ -59,6 +59,26 @@ def equivalent_laws(Rh: float,
                     K: float = None,
                     C: float = None,
                     f: float = None) -> Tuple[float]:
+    """
+    Compute the equivalent coefficients for all three friction laws.
+    Note that only one of the coefficients has to be specified, else 
+    there is too much information.
+
+    Parameters
+    ----------
+    Rh: float | np.ndarray
+        The hydraulic radius.
+    K: float = None
+        The Gauckler-Manning-Strickler coefficient 1/n.
+    C: float
+        The Chézy coefficient.
+    f: float
+        The Darcy coefficient.
+    
+    Return
+    ------
+    K, C, f: Tuple[float | np.ndarray]
+    """
 
     Rh = np.array(Rh)
     Rh[np.isclose(Rh, 0)] = None
@@ -168,13 +188,9 @@ def strip_outside_world(x: Iterable, z: Iterable) -> Tuple[np.ndarray]:
              _
             //\~~~~~~~~~~~~~~~~~~  <- Who knows where this water table ends ?
            ////\          _
-    ______//////\        //\_____
-    /////////////\______/////////
-    /////////////////////////////
-    Legend:
-         _
-        //\ : ground
-        ~ : water table
+    ______//////\        //\_____   Legend:  _
+    /////////////\______/////////           //\ : ground
+    /////////////////////////////           ~ : water table
 
     Parameters
     ----------
@@ -255,11 +271,9 @@ def hydraulic_data(x: Iterable, z: Iterable) -> pd.DataFrame:
     Parameters
     ----------
     x : Iterable
-        x (transversal) coordinates of the profile. 
-        These values will be sorted.
+        x (transversal) coordinates of the profile.
     z : Iterable
-        z (elevation) coordinates of the profile. 
-        It will be sorted according to x.
+        z (elevation) coordinates of the profile.
 
     Return
     ------
@@ -271,7 +285,6 @@ def hydraulic_data(x: Iterable, z: Iterable) -> pd.DataFrame:
         B : dry perimeter
         h : water depth
         Qcr : critical discharge
-        Q : discharge (if GMS computed)
     """
     # Compute wet section's properties
     P, S, B = np.transpose([polygon_properties(x, z, zi) for zi in z])
@@ -412,7 +425,7 @@ class Profile(pd.DataFrame):
     plot(h: float = None)
         Plots a matplotlib diagram with the profile,
         the Q-h & Q-h_critical curves and a bonus surface from h
-    interp_Q(h: Iterable)
+    interp_h_vs_Q(h: Iterable)
         Returns an quadratic interpolation of the discharge (GMS)
     """
 
@@ -460,19 +473,19 @@ class Profile(pd.DataFrame):
             self["K"] = K
             self["Js"] = Js
 
-    def interp_K(self, h_array: Iterable) -> np.ndarray:
+    def interp_h_vs_K(self, h_array: Iterable) -> np.ndarray:
         return interp1d(self.h, self.K)(h_array)
 
-    def interp_Js(self, h_array: Iterable) -> np.ndarray:
+    def interp_h_vs_Js(self, h_array: Iterable) -> np.ndarray:
         return interp1d(self.h, self.Js)(h_array)
 
-    def interp_B(self, h_array: Iterable) -> np.ndarray:
+    def interp_h_vs_B(self, h_array: Iterable) -> np.ndarray:
         return interp1d(self.h, self.B)(h_array)
 
-    def interp_P(self, h_array: Iterable) -> np.ndarray:
+    def interp_h_vs_P(self, h_array: Iterable) -> np.ndarray:
         return interp1d(self.h, self.P)(h_array)
 
-    def interp_S(self, h_array: Iterable) -> np.ndarray:
+    def interp_h_vs_S(self, h_array: Iterable) -> np.ndarray:
         """
         Quadratic interpolation of the surface. 
         dS = dh*dB/2 where B is the surface width
@@ -514,7 +527,7 @@ class Profile(pd.DataFrame):
 
         return s
 
-    def interp_Q(self, h_array: Iterable) -> np.ndarray:
+    def interp_h_vs_Q(self, h_array: Iterable) -> np.ndarray:
         """
         Interpolate discharge from water depth with
         the quadratic interpolation of S.
@@ -530,18 +543,18 @@ class Profile(pd.DataFrame):
             The corresponding discharges
         """
         h = np.array(h_array, dtype=np.float32)
-        S = self.interp_S(h)
-        P = self.interp_P(h)
+        S = self.interp_h_vs_S(h)
+        P = self.interp_h_vs_P(h)
         Q = np.zeros_like(h)
         mask = ~np.isclose(P, 0)
         Q[mask] = S[mask] * GMS(
-            self.interp_K(h)[mask],
+            self.interp_h_vs_K(h)[mask],
             S[mask]/P[mask],
-            self.interp_Js(h)[mask]
+            self.interp_h_vs_Js(h)[mask]
         )
         return Q
 
-    def interp_Qcr(self, h_array: Iterable) -> np.ndarray:
+    def interp_h_vs_Qcr(self, h_array: Iterable) -> np.ndarray:
         """
         Interpolate critical discharge from water depth.
 
@@ -556,8 +569,8 @@ class Profile(pd.DataFrame):
             The corresponding critical discharge
         """
         Qcr = np.full_like(h_array, None)
-        B = self.interp_B(h_array)
-        S = self.interp_S(h_array)
+        B = self.interp_h_vs_B(h_array)
+        S = self.interp_h_vs_S(h_array)
         mask = ~ np.isclose(B, 0)
         Qcr[mask] = np.sqrt(g*S[mask]**3/B[mask])
         return Qcr
@@ -572,17 +585,44 @@ class Profile(pd.DataFrame):
 
         l1, l2 = ax2.get_lines()
         h = np.linspace(self.h.min(), self.h.max(), interp_num)
-        l1.set_data(self.interp_Q(h), h)
-        l2.set_data(self.interp_Qcr(h), h)
+        l1.set_data(self.interp_h_vs_Q(h), h)
+        l2.set_data(self.interp_h_vs_Qcr(h), h)
 
         return fig, (ax1, ax2)
 
 
 def csv_to_csv(input_file: str,
+               xcol="x",
+               zcol="z",
                output_file: str = None,
-               plot: bool = False,
-               K:float = 33,
-               i:float = 0.12/100) -> None:
+               Js: float = 0.12/100,
+               K: float = None,
+               C: float = None,
+               f: float = None) -> None:
+    """
+    From a table with the profile, write a table with hydraulic details.
+    
+    Paramters
+    ---------
+    input_file: str | pathlib.Path
+        The input file with columns `xcol` and `zcol`
+    xcol: str
+        The name of the column with the x-coordinates
+    zcol: str
+        The name of the column with the z-coordinates
+    output_file: str = None
+        Name of the output file with hydraulic details.
+    Js: float
+        The slope of the bed
+    K: float = None
+        The Gauckler-Manning-Strickler coefficient
+    C: float = None
+        The Chézy coefficient
+    f: float = None
+        The Darcy coefficient
+    """
+    if sum(v is None for v in (K, C, f)) != 1:
+        raise ValueError("Speficify exactly one of 'K', 'C' or 'f'.")
 
     input_file = Path(input_file)
     if output_file is None:
@@ -592,20 +632,12 @@ def csv_to_csv(input_file: str,
         output_file = Path(output_file)
 
     df = pd.read_csv(input_file)
-    profile = Profile(df.x, df.z, K, i)
+    profile = Profile(df[xcol], df[zcol], Js=Js, K=K, C=C, f=f)
     profile.to_csv(output_file, index=False)
-
-    if plot is not None:
-        with plt.style.context("ggplot"):
-            fig, (ax1, ax2) = profile.plot()
-            ax1.plot(df.x, df.z, '-o', ms=8, lw=3, c='gray', zorder=0)
-            ax2.dataLim.x1 = profile.Q.max()
-            ax2.autoscale_view()
-            plt.show()
 
 
 def select_file():
-    """Select the path of the disired file"""
+    """Select the path of the disired file though a file dialog."""
     root = Tk()
     root.withdraw()
     return filedialog.askopenfilename(parent=root, title='Choose file')
@@ -616,8 +648,8 @@ def app():
     params = dict(
         ipath = Path(__file__).parent / "profiles" / "profile.csv",
         opath = Path(__file__).parent / "profiles" / "profile-processed.csv",
-        xcol="Column name for x-coordinates",
-        zcol="Column name for z-coordinates",
+        xcol="x-coordinate column",
+        zcol="z-coordinates column",
         friction=33,
         friclaw="GMS",
         slope=1.2/1000,
@@ -636,11 +668,12 @@ def app():
     top = (screen_height - height) // 2
     window.geometry(f"{width}x{height}+{left}+{top}")
 
+    # Initialize main frame
     frame = Frame(window, borderwidth=10)
-    frame.pack(fill='both', expand=True)
-    for col, w in enumerate((1, 1, 3, 1, 1)):
+    frame.pack(fill='both')
+    for col, w in enumerate((5, 5, 1, 50, 5)):
         frame.columnconfigure(col, pad=10, weight=w)
-    for row, w in enumerate((3, 3, 3, 3, 3, 1)):
+    for row, w in enumerate((1, 3, 3, 3, 3, 3)):
         frame.rowconfigure(row, pad=5, weight=w)
 
     # Input file path and arguments to pandas
@@ -665,6 +698,11 @@ def app():
 
         return True
 
+    # Simple lable
+    lab1 = Label(frame, text="Click on figure to reload it")
+    lab1.grid(row=0, column=0, sticky="NSWE")
+
+    # Widgets for file loading
     pd_lab = Label(frame, text="pd.read_csv(")
     pd_endlab = Label(frame, text=")")
 
@@ -745,7 +783,7 @@ def app():
 
     # Figure setup
     with plt.style.context('ggplot'):
-        fig = plt.figure()
+        fig = plt.figure(layout="tight")
         ax1 = fig.add_subplot()
         ax2 = fig.add_subplot()
 
@@ -768,6 +806,7 @@ def app():
     toolbar_frame.grid(row=5, column=0, columnspan=2, sticky="NSWE")
     canvas.get_tk_widget().grid(row=1, column=2, rowspan=5, columnspan=3, sticky="NSWE")
     canvas.mpl_connect("button_press_event", replot)
+    window.bind_all('<Return>', replot)
 
     window.mainloop()
 
