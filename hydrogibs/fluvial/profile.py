@@ -76,7 +76,7 @@ def equivalent_laws(Rh: float,
         The Chézy coefficient.
     f: float
         The Darcy coefficient.
-    
+
     Return
     ------
     K, C, f: Tuple[float | np.ndarray]
@@ -109,7 +109,7 @@ def equivalent_laws(Rh: float,
     return K, C, f
 
 
-def twin_points(x_arr: Iterable, z_arr: Iterable) -> Tuple[np.ndarray]:
+def twin_points_old(x_arr: Iterable, z_arr: Iterable) -> Tuple[np.ndarray]:
     r"""
     Duplicate an elevation to every crossing of its level and the (x, z) curve.
     This will make for straight water tables when filtering like this :
@@ -175,6 +175,71 @@ def twin_points(x_arr: Iterable, z_arr: Iterable) -> Tuple[np.ndarray]:
     return x, z
 
 
+def twin_points(x: Iterable, z: Iterable) -> Tuple[np.ndarray]:
+    r"""
+    Duplicate an elevation to every crossing of its level and the (x, z) curve.
+    This will make for straight water tables when filtering like this :
+    >>> z_masked = z[z <= z[ix]]  # array with z[ix] at its borders
+    Thus, making the cross-section properties (S, P, B) easily computable.
+    _                          ___
+    /|     _____              ////
+    /|    //////\            /////
+    /+~~~+-------o~~~~~~~~~~+/////
+    /|__//////////\        ///////
+    ///////////////\______////////
+    //////////////////////////////
+    Legend:
+         _
+        //\ : ground
+        ~ : water table
+        o : a certain point given by some pair of (x, z)
+        + : the new points created by this function
+
+    Parameters
+    ----------
+    x : Iterable
+        the horizontal coordinates array
+    y : Iterable
+        the vertical coordinates array
+
+    Return
+    ------
+    np.ndarray
+        the enhanced x-array
+    np.ndarray
+        the enhanced y-array
+    """
+    x = np.array(x, dtype=np.float32)
+    z = np.array(z, dtype=np.float32)
+    # Duplicate arrays to have matrices
+    X = np.tile(x, (x.size, 1))
+    Z = np.tile(z, (z.size, 1))
+    # Find crossings
+    Cdown = (Z[:, :-1].T > z).T & (Z[:, 1:].T < z).T
+    Cup   = (Z[:, :-1].T < z).T & (Z[:, 1:].T > z).T
+    C = Cup | Cdown
+    # Compute crossing coordinates
+    Zc = (np.zeros_like(C).T + z).T
+    Xc = np.full_like(X[:, :-1], float("nan"))
+    Xc[C] = X[:, :-1][C] + (Zc[C] - Z[:, :-1][C]) * np.diff(X)[C]/np.diff(Z)[C]
+    # Include original points (the last point is added afterwards)
+    np.fill_diagonal(Xc, x)
+    np.fill_diagonal(C, True)
+    # Sort points to avoid half-turns
+    axis = 0
+    ix = Xc.argsort(axis=axis)
+    ix[:, np.diff(x) < 0] = Xc[:, np.diff(x) < 0].argsort(axis=axis)[::-1]
+    Xc = np.take_along_axis(Xc, ix, axis=axis)
+    Zc = np.take_along_axis(Zc, ix, axis=axis)
+    C = np.take_along_axis(C, ix, axis=axis)
+    # Include last point and drop duplicates
+    x = np.hstack((Xc.T[C.T], x[-1]))
+    z = np.hstack((Zc.T[C.T], z[-1]))
+    # x, z = pd.DataFrame((x, z)).drop_duplicates().to_numpy()
+
+    return x, z
+
+
 def strip_outside_world(x: Iterable, z: Iterable) -> Tuple[np.ndarray]:
     r"""
     Return the same arrays without the excess borders
@@ -216,7 +281,9 @@ def strip_outside_world(x: Iterable, z: Iterable) -> Tuple[np.ndarray]:
     right = argmin <= ix  # boolean array indicating right
 
     # Highest framed elevation (avoiding profiles with undefined borders)
+    print(z[left].max(), z[right].max())
     zmax = min(z[left].max(), z[right].max())
+    assert zmax in z[left] and zmax in z[right]
     right_max_arg = argmin + (z[right] == zmax).argmax()
     left_max_arg = argmin - (z[left] == zmax)[::-1].argmax()
     right[right_max_arg+1:] = False
@@ -225,11 +292,11 @@ def strip_outside_world(x: Iterable, z: Iterable) -> Tuple[np.ndarray]:
     return x[left | right], z[left | right]
 
 
-def polygon_properties(
+def PSB_old(
     x_arr: Iterable,
     z_arr: Iterable,
     z: float
-) -> Tuple[float]:
+) -> Tuple[float]:  # Old version of PSB()
     """
     Return the polygon perimeter and area of the formed polygons.
 
@@ -266,6 +333,45 @@ def polygon_properties(
     return length, surface, width
 
 
+def PSB(x: Iterable, z: Iterable):
+    """
+    Compute wet perimeter, wet surface and wet width for each of z's values.
+
+    Parameters
+    ----------
+    x : Iterable
+        x-coordinates
+    z : Iterable
+        y-coordinates
+
+    Return
+    ------
+    NDarray
+        Wet permimeter of the polygon
+    NDarray
+        Wet surface area of the polygon
+    NDarray
+        Wet width
+    """
+    x = np.array(x)
+    z = np.array(z)
+    X = np.tile(x, (x.size, 1))
+    Z = np.tile(z, (z.size, 1))
+
+    Zm = (Z[:, :-1] + Z[:, 1:])/2
+    H = (z - Zm.T).T
+    dZ = Z[:, 1:] - Z[:, :-1]
+    dX = X[:, 1:] - X[:, :-1]
+    dZ[H < 0] = 0.
+    dX[H < 0] = 0.
+
+    wet_perimeter = np.sqrt(dX**2 + dZ**2).sum(axis=1)
+    wet_surface = (H*dX).sum(axis=1)
+    wet_width = dX.sum(axis=1)
+
+    return wet_perimeter, wet_surface, wet_width
+
+
 def hydraulic_data(x: Iterable, z: Iterable) -> pd.DataFrame:
     """
     Derive relation between water depth and discharge (Manning-Strickler)
@@ -289,7 +395,7 @@ def hydraulic_data(x: Iterable, z: Iterable) -> pd.DataFrame:
         Qcr : critical discharge
     """
     # Compute wet section's properties
-    P, S, B = np.transpose([polygon_properties(x, z, zi) for zi in z])
+    P, S, B = PSB(x, z)
     h = z - z.min()
 
     Rh = np.full_like(P, None)
@@ -327,7 +433,7 @@ def profile_diagram(
         Water depth of stream cross section to fill
     show : bool
         wether to show figure or not
-    fig, (ax0, ax1)
+    fig, (axxz, axQh)
         figure and axes on which to draw (ax0: riverberd, ax1: Q(h))
 
     Returns
@@ -342,11 +448,11 @@ def profile_diagram(
     if fig is None:
         fig = plt.figure(*args, **kwargs)
     if axes is None:
-        ax1 = fig.add_subplot()
-        ax0 = fig.add_subplot()
-        ax0.patch.set_visible(False)
+        axQh = fig.add_subplot()
+        axxz = fig.add_subplot()
+        axxz.patch.set_visible(False)
     else:
-        ax1, ax0 = axes
+        axQh, axxz = axes
 
     x = np.array(x, dtype=np.float32)
     z = np.array(z, dtype=np.float32)
@@ -354,44 +460,44 @@ def profile_diagram(
     Q = np.array(Q, dtype=np.float32)
     Qcr = np.array(Qcr, dtype=np.float32)
 
-    l1, = ax0.plot(x, z, '-ok',
+    l1, = axxz.plot(x, z, '-ok',
                    mfc='w', lw=3, ms=5, mew=1,
                    label='Profil en travers utile')
 
-    ax0.set_xlabel('Distance profil [m]')
-    ax0.set_ylabel('Altitude [m.s.m.]')
+    axxz.set_xlabel('Distance profil [m]')
+    axxz.set_ylabel('Altitude [m.s.m.]')
 
     # positionning axis labels on right and top
-    ax0.xaxis.tick_top()
-    ax0.xaxis.set_label_position('top')
-    ax0.yaxis.tick_right()
-    ax0.yaxis.set_label_position('right')
+    axxz.xaxis.tick_top()
+    axxz.xaxis.set_label_position('top')
+    axxz.yaxis.tick_right()
+    axxz.yaxis.set_label_position('right')
 
     # plotting water depths
     ix = h.argsort()  # simply a sorting index
-    l2, = ax1.plot(Q[ix], h[ix], '--b', label="$y_0$ (hauteur d'eau)")
-    l3, = ax1.plot(Qcr[ix], h[ix], '-.', label='$y_{cr}$ (hauteur critique)')
-    ax1.set_xlabel('Débit [m$^3$/s]')
-    ax1.set_ylabel("Hauteur d'eau [m]")
-    ax0.grid(False)
+    l2, = axQh.plot(Q[ix], h[ix], '--b', label="$y_0$ (hauteur d'eau)")
+    l3, = axQh.plot(Qcr[ix], h[ix], '-.', label='$y_{cr}$ (hauteur critique)')
+    axQh.set_xlabel('Débit [m$^3$/s]')
+    axQh.set_ylabel("Hauteur d'eau [m]")
+    axxz.grid(False)
 
     # plotting 'RG' & 'RD'
     ztxt = (z.max() + z.min())/2
-    ax0.text(x.min(), ztxt, 'RG')
-    ax0.text(x.max(), ztxt, 'RD', ha='right')
+    axxz.text(x.min(), ztxt, 'RG')
+    axxz.text(x.max(), ztxt, 'RD', ha='right')
 
     # match height and altitude ylims
-    ax1.set_ylim(ax0.get_ylim() - z.min())
+    axQh.set_ylim(axxz.get_ylim() - z.min())
 
     # common legend for both axes
     lines = (l1, l2, l3)
     labels = [line.get_label() for line in lines]
-    ax0.legend(lines, labels)
+    axxz.legend(lines, labels)
 
-    ax1.dataLim.x0 = 0
-    ax1.autoscale_view()
+    axQh.dataLim.x0 = 0
+    axQh.autoscale_view()
 
-    return fig, (ax0, ax1)
+    return fig, (axxz, axQh)
 
 
 class Profile(pd.DataFrame):
@@ -646,17 +752,38 @@ def select_file():
 
 
 def app():
+    """
+    Making an app from all above functions.
+
+    +-------------------+-------------------------+-------------+
+    |       Info        | pd.read_csv(path='...') | file dialog |
+    +-------------------+-------------------------+-------------+
+    |        x          |          Entry          |             |
+    +-------------------+-------------------------+             |
+    |        z          |          Entry          |             |
+    +-------------------+-------------------------+             |
+    | Friction law menu |          Entry          |    PLOT     |
+    +-------------------+-------------------------+             |
+    |       Slope       |          Entry          |             |
+    +-------------------+-------------------------+             |
+    |    Save Button    |          Path           |             |
+    +-------------------+-------------------------+-------------+
+    """
 
     params = dict(
         ipath = Path(__file__).parent / "profiles" / "profile.csv",
         opath = Path(__file__).parent / "profiles" / "profile-processed.csv",
         xcol="x-coordinate column",
         zcol="z-coordinates column",
-        friction=33,
+        friction="33",
         friclaw="GMS",
-        slope=1.2/1000,
+        slope=str(1.2/1000),
         pandas_kwargs = dict()
     )
+
+    def log(s):
+        lab1text.set(s)
+        lab1.update_idletasks()
 
     # Setting up window and frame
     window = Tk()
@@ -686,6 +813,7 @@ def app():
         try:
             kwargs = eval(f"dict({P})")
         except:
+            log()
             filetxt.config(bg="red")
             return True
 
@@ -701,7 +829,9 @@ def app():
         return True
 
     # Simple label
-    lab1 = Label(frame, text="Click on figure or\n hit enter to reload it")
+    lab1basetext = "Click on figure or\n hit enter to reload it"
+    lab1text = StringVar(frame, lab1basetext)
+    lab1 = Label(frame, textvariable=lab1text)
     lab1.grid(row=0, column=0, sticky="NSWE")
 
     # Widgets for file loading
@@ -735,20 +865,36 @@ def app():
     zcoltxt = Entry(frame, validate="key", vcm=update_dict("zcol"))
     zcoltxt.insert(0, 'Altitude [m.s.m.]')
 
-    # Friction parmeters widgets
+    # Friction parameters widgets
     fricvar = StringVar(frame)
     fricvar.set(params["friclaw"])
-
     def update_friclaw(val):
         params["friclaw"] = val
     friclab = OptionMenu(frame, fricvar, "GMS", "Chézy", "Darcy", command=update_friclaw)
     fric_coefs = {"GMS": "K", "Chézy": "C", "Darcy": "f"}
-    frictxt = Entry(frame, validate="key", vcm=update_dict("friction"), justify="right")
-    frictxt.insert(0, 33)
+
+    def uptd_fric(val):
+        try:
+            val = float(val)
+            params["friction"] = val
+            frictxt.config(bg="white")
+        except ValueError:
+            frictxt.config(bg="red")
+        return True
+    frictxt = Entry(frame, validate="key", vcm=(frame.register(uptd_fric), "%P"), justify="right")
+    frictxt.insert(0, params["friction"])
 
     # Bed slope entry widget
+    def uptd_slope(val):
+        try:
+            val = float(val)
+            params["slope"] = val
+            slopetxt.config(bg="white")
+        except ValueError:
+            slopetxt.config(bg="red")
+        return True
     slopelab = Label(frame, text="Slope")
-    slopetxt = Entry(frame, validate="key", vcm=update_dict("slope"), justify="right")
+    slopetxt = Entry(frame, validate="key", vcm=(frame.register(uptd_slope), "%P"), justify="right")
     slopetxt.insert(0, params["slope"])
 
     # For saving the results in a csv table
@@ -799,13 +945,20 @@ def app():
         ax2 = fig.add_subplot()
 
     def replot(event=None):
+
         with plt.style.context('ggplot'):
-            # Reinitiate axes
+            log("Clearing axes...")
             ax1.cla()
             ax2.cla()
             ax2.patch.set_visible(False)
-            df = pd.read_csv(params["ipath"], **params["pandas_kwargs"])
-            # Check that columns exist
+    
+            log("Reading csv file...")
+            try:
+                df = pd.read_csv(params["ipath"], **params["pandas_kwargs"])
+            except:
+                log("Error while reading the file.\nSee in the terminal.")
+
+            log("Checking column names...")
             nocols = False
             if params["xcol"] not in df.columns:
                 xcoltxt.config(bg="red")
@@ -818,14 +971,18 @@ def app():
             else:
                 zcoltxt.config(bg="white")
             if nocols:
+                log("Did not find the given columns names in file.")
                 return False
-            # Compute and plot profile data
+
+            log("Computing hydraulic properties...")
             profile = Profile(df[params["xcol"]],
                         df[params["zcol"]],
                         Js=float(params["slope"]),
                         **{fric_coefs[params["friclaw"]]: float(params["friction"])})
+            log("Plotting figure...")
             profile.plot(fig=fig, axes=(ax1, ax2))
             canvas.draw()
+            log(lab1basetext)
 
     canvas = FigureCanvasTkAgg(fig, frame)
     toolbar_frame = Frame(frame)
@@ -838,5 +995,25 @@ def app():
     window.mainloop()
 
 
+def main():
+    df = pd.read_csv(Path(__file__).parent / "profiles" / "profile.csv")
+    fig, (ax1, ax2) = Profile(df["Dist. cumulée [m]"], df["Altitude [m.s.m.]"], K=33, Js=0.0012).plot()
+    plt.show()
+
+    df = pd.read_csv(Path(__file__).parent / "profiles" / "closedProfile.csv")
+    prof = Profile(df.x, df.z, K=33, Js=0.0012)
+    fig, (ax1, ax2) = prof.plot()
+    ax2.set_xlim((prof.Q.min(), prof.Q.max()))
+    plt.show()
+
+    df = pd.read_csv(Path(__file__).parent / "profiles" / "minimalProfile.csv")
+    fig, (ax1, ax2) = Profile(df.x, df.z, K=33, Js=0.0012).plot()
+    plt.show()
+
+    df = pd.read_csv(Path(__file__).parent / "profiles" / "randomProfile.csv")
+    fig, (ax1, ax2) = Profile(df.x, df.z, K=33, Js=0.0012).plot()
+    plt.show()
+
+
 if __name__ == "__main__":
-    app()
+    main()
