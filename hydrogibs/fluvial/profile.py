@@ -215,9 +215,11 @@ def twin_points(x: Iterable, z: Iterable) -> Tuple[np.ndarray]:
     X = np.tile(x, (x.size, 1))
     Z = np.tile(z, (z.size, 1))
     # Find crossings
-    Cdown = (Z[:, :-1].T > z).T & (Z[:, 1:].T < z).T
-    Cup   = (Z[:, :-1].T < z).T & (Z[:, 1:].T > z).T
-    C = Cup | Cdown
+    C = (
+        ((Z[:, :-1].T > z) & (Z[:, 1:].T < z)).T
+        |
+        ((Z[:, :-1].T < z) & (Z[:, 1:].T > z)).T
+    )
     # Compute crossing coordinates
     Zc = (np.zeros_like(C).T + z).T
     Xc = np.full_like(X[:, :-1], float("nan"))
@@ -233,9 +235,8 @@ def twin_points(x: Iterable, z: Iterable) -> Tuple[np.ndarray]:
     Zc = np.take_along_axis(Zc, ix, axis=axis)
     C = np.take_along_axis(C, ix, axis=axis)
     # Include last point and drop duplicates
-    x = np.hstack((Xc.T[C.T], x[-1]))
+    x = np.hstack((Xc.T[C.T], x[-1]))  # transpose for flattening order
     z = np.hstack((Zc.T[C.T], z[-1]))
-    # x, z = pd.DataFrame((x, z)).drop_duplicates().to_numpy()
 
     return x, z
 
@@ -281,7 +282,6 @@ def strip_outside_world(x: Iterable, z: Iterable) -> Tuple[np.ndarray]:
     right = argmin <= ix  # boolean array indicating right
 
     # Highest framed elevation (avoiding profiles with undefined borders)
-    print(z[left].max(), z[right].max())
     zmax = min(z[left].max(), z[right].max())
     assert zmax in z[left] and zmax in z[right]
     right_max_arg = argmin + (z[right] == zmax).argmax()
