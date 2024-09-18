@@ -1,4 +1,9 @@
 """
+matplotlib==3.9.1
+pandas==2.2.2
+scipy==1.14.0
+numpy==2.0.0
+
 Script for estimating the h-Q relationship from a given profile (according to GMS). 
 The object 'Profile' stores the hydraulic data as a pandas.DataFrame and creates a complete diagram with the .plot() method.
 
@@ -17,6 +22,7 @@ It will plot three diagrams with :
     - The water_depth-discharge relation
     - The water_depth-critical_discharge relation
 """
+from time import perf_counter
 from typing import Iterable, Tuple
 from pathlib import Path
 
@@ -27,8 +33,6 @@ from tkinter import filedialog, Tk, Frame, Entry, Label, Button, OptionMenu, Str
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 import pandas as pd
 import numpy as np
-
-from time import sleep
 
 
 g = 9.81
@@ -396,6 +400,8 @@ def hydraulic_data(x: Iterable, z: Iterable) -> pd.DataFrame:
     """
     # Compute wet section's properties
     P, S, B = PSB(x, z)
+    # P, S, B = np.array([PSB_old(x, z, zi) for zi in z]).T
+
     h = z - z.min()
 
     Rh = np.full_like(P, None)
@@ -581,17 +587,19 @@ class Profile(pd.DataFrame):
             self["K"] = K
             self["Js"] = Js
 
+        self = self.sort_values("h").reset_index()
+
     def interp_h_vs_K(self, h_array: Iterable) -> np.ndarray:
-        return interp1d(self.h, self.K)(h_array)
+        return interp1d(self.h, self.K, assume_sorted=False)(h_array)
 
     def interp_h_vs_Js(self, h_array: Iterable) -> np.ndarray:
-        return interp1d(self.h, self.Js)(h_array)
+        return interp1d(self.h, self.Js, assume_sorted=False)(h_array)
 
     def interp_h_vs_B(self, h_array: Iterable) -> np.ndarray:
-        return interp1d(self.h, self.B)(h_array)
+        return interp1d(self.h, self.B, assume_sorted=False)(h_array)
 
     def interp_h_vs_P(self, h_array: Iterable) -> np.ndarray:
-        return interp1d(self.h, self.P)(h_array)
+        return interp1d(self.h, self.P, assume_sorted=False)(h_array)
 
     def interp_h_vs_S(self, h_array: Iterable) -> np.ndarray:
         """
@@ -951,7 +959,7 @@ def app():
             ax1.cla()
             ax2.cla()
             ax2.patch.set_visible(False)
-    
+
             log("Reading csv file...")
             try:
                 df = pd.read_csv(params["ipath"], **params["pandas_kwargs"])
@@ -1015,5 +1023,34 @@ def main():
     plt.show()
 
 
+def benchmark():
+    fnames = ["profile.csv", "closedProfile.csv", "minimalProfile.csv", "randomProfile.csv"]
+    dfs = [pd.read_csv(Path(__file__).parent / f) for f in fnames]
+    n = 1000
+    for i, df in enumerate(dfs):
+        xarr, zarr = df.to_numpy().T[:2]
+        print(f"### {i} ###")
+        a = perf_counter()
+        for _ in range(n):
+            x, z = twin_points(xarr, zarr)
+        b = perf_counter()
+        for _ in range(n):
+            PSB(x, z)
+        c = perf_counter()
+        for _ in range(n):
+            x, z = twin_points_old(xarr, zarr)
+        d = perf_counter()
+        for _ in range(n):
+            [PSB_old(x, z, zi) for zi in z]
+        e = perf_counter()
+
+        print(f"twin: {b-a:.2f} s")
+        print(f"otwi: {d-c:.2f} s")
+        print("---")
+        print(f"PSB:  {c-b:.2f} s")
+        print(f"oPS:  {e-d:.2f} s")
+
+
 if __name__ == "__main__":
     main()
+    # benchmark()
