@@ -6,7 +6,7 @@ from datetime import datetime
 from matplotlib.dates import DateFormatter
 from pathlib import Path
 from warnings import warn
-
+import tkinter as tk
 
 """
 This module is fully dedicated to the GR4h method
@@ -435,32 +435,24 @@ class App:
                  title: str = None,
                  appearance: str = "dark",
                  color_theme: str = "blue",
-                 style: str = "seaborn",
+                 style: str = "ggplot",
                  close_and_clear: bool = True,
                  *args, **kwargs):
-
-        try:
-            import customtkinter as ctk
-        except ImportError:
-            raise ("Install customtkinter for interactive apps")
 
         self.catchment = catchment
         self.rain = rain
         self.event = rain @ catchment
 
-        ctk.set_appearance_mode(appearance)
-        ctk.set_default_color_theme(color_theme)
-
-        self.root = ctk.CTk()
+        self.root = tk.Tk()
         self.root.title(title)
         self.root.bind('<Return>', self.entries_update)
 
-        self.dframe = ctk.CTkFrame(master=self.root)
+        self.dframe = tk.Frame(master=self.root)
         self.dframe.grid(row=0, column=1, sticky="NSEW")
 
         self.init_diagram(style=style, show=False, *args, **kwargs)
 
-        self.pframe = ctk.CTkFrame(master=self.root)
+        self.pframe = tk.Frame(master=self.root)
         self.pframe.grid(column=0, row=0, sticky="NSEW")
 
         entries = [
@@ -482,32 +474,34 @@ class App:
 
             object, key, unit, *alias = entry
 
-            entryframe = ctk.CTkFrame(master=self.pframe)
+            entryframe = tk.Frame(master=self.pframe)
             entryframe.grid(sticky="NSEW")
             unit_str = f"[{unit}]"
             name = alias[0] if alias else key
 
-            label = ctk.CTkLabel(
+            label = tk.Label(
                 master=entryframe,
                 text=f" {name:<5} {unit_str:<6} ",
                 font=("monospace", 14)
             )
             label.grid(row=row, column=0, sticky="EW", ipady=5)
 
-            input = ctk.CTkEntry(master=entryframe, width=50)
+            input = tk.Entry(master=entryframe, width=50)
 
             value = getattr(getattr(self, object), key)
             input.insert(0, value)
             input.grid(row=row, column=1, sticky="EW")
 
-            slider = ctk.CTkSlider(
+            slider = tk.Scale(
                 master=entryframe,
-                from_=0, to=2*value if value else 1,
-                number_of_steps=999,
+                from_=0,
+                to=2*value if value else 1,
+                resolution=(2*value if value else 1)/100,
                 command=(
                     lambda _, object=object, key=key:
                     self.slider_update(object, key)
-                )
+                ),
+                orient="horizontal"
             )
             slider.grid(row=row, column=2, sticky="EW")
 
@@ -518,7 +512,7 @@ class App:
                 slider=slider
             )
 
-        ctk.CTkButton(master=self.pframe,
+        tk.Button(master=self.pframe,
                       text="Reset zoom",
                       command=lambda: self.diagram.home_zoom(self.canvas)
                       ).grid(pady=10)
