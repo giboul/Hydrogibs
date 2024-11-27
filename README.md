@@ -1,9 +1,8 @@
 # hydrogibs
 
-Small hydrology package created for the sake of a class projects with [Christophe Ancey](https://fr.ancey.ch/ "fr.ancey.ch") and Giovanni De Cesare.
+Small hydrology package created for the sake of class projects with [Christophe Ancey](https://fr.ancey.ch/ "fr.ancey.ch") and Giovanni De Cesare.
 
 The only module that's currently usable is the GR4 model containing:
-
 
 ## A Catchment object:
 
@@ -39,9 +38,19 @@ A block rain (rainfall = intensity if t < duration else 0): `BlockRain(intensity
 
  `App(catchment, rain)`
 
+<img src="hydrogibs/floods/GR4.png">
+
 # Hydraulic profiles
 
 ```hydrogibs.fluvial.canal.Section(x_array, z_array).plot()```
+
+<img src="hydrogibs/fluvial/profiles/profile.png">
+<img src="hydrogibs/fluvial/profiles/closedprofile.png">
+
+
+## Simple time series analysis
+
+<img src="hydrogibs/extreme/fréchet.png">
 
 # Example file
 
