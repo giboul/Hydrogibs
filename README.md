@@ -45,6 +45,7 @@ A block rain (rainfall = intensity if t < duration else 0): `BlockRain(intensity
 ```hydrogibs.fluvial.canal.Section(x_array, z_array).plot()```
 
 <img src="hydrogibs/fluvial/profiles/closedprofile.png">
+## With an app to conveninetly explore different friction laws and friction coefficients
 <img src="hydrogibs/fluvial/profiles/profile_app.png">
 
 
