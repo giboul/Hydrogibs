@@ -1,1 +1,1 @@
-from .profile import Profile, hydraulic_data, profile_diagram
+from .hydroprofile import Profile, hydraulic_data, profile_diagram
